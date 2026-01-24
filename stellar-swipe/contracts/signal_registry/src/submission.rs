@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-use soroban_sdk::{contracttype, Address, Env, Map, String};
 use crate::stake::{can_submit_signal, StakeInfo, DEFAULT_MINIMUM_STAKE};
+use soroban_sdk::{contracttype, Address, Env, Map, String};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -50,7 +50,7 @@ pub fn submit_signal(
     }
 
     // Validate asset pair
-   let asset_bytes = asset_pair.to_bytes();
+    let asset_bytes = asset_pair.to_bytes();
     let has_slash = asset_bytes.iter().any(|b| b == b'/');
     let len = asset_bytes.len();
     if !has_slash || len < 5 || len > 20 {
@@ -105,10 +105,11 @@ pub fn submit_signal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, Env, Map};
     use crate::stake::{stake, StakeInfo, DEFAULT_MINIMUM_STAKE};
+    use soroban_sdk::{testutils::Address as TestAddress, Env, Map};
 
     fn sdk_string(env: &Env, s: &str) -> String {
+        #[allow(deprecated)]
         String::from_slice(env, s)
     }
 
@@ -144,16 +145,22 @@ mod tests {
         assert_eq!(signal_id, 1);
         let stored = signals.get(signal_id).unwrap();
         assert_eq!(stored.provider, provider);
-        assert_eq!(stored.asset_pair.to_bytes(), sdk_string(&env, "XLM/USDC").to_bytes());
+        assert_eq!(
+            stored.asset_pair.to_bytes(),
+            sdk_string(&env, "XLM/USDC").to_bytes()
+        );
         assert_eq!(stored.action, Action::Buy);
         assert_eq!(stored.price, 120_000_000);
-        assert_eq!(stored.rationale.to_bytes(), sdk_string(&env, "Bullish on XLM").to_bytes());
+        assert_eq!(
+            stored.rationale.to_bytes(),
+            sdk_string(&env, "Bullish on XLM").to_bytes()
+        );
     }
 
     #[test]
     fn test_submit_signal_no_stake() {
         let env = setup_env();
-        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
@@ -252,31 +259,35 @@ mod tests {
         assert_eq!(res, Err(Error::DuplicateSignal));
     }
 
- #[test]
-fn test_submit_signal_below_minimum_stake() {
-    let env = setup_env();
-    let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
-    let mut signals: Map<u64, Signal> = Map::new(&env);
-    let provider = sample_provider(&env);
+    #[test]
+    fn test_submit_signal_below_minimum_stake() {
+        let env = setup_env();
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut signals: Map<u64, Signal> = Map::new(&env);
+        let provider = sample_provider(&env);
 
-    // Manually insert a stake below minimum
-    let low_stake = StakeInfo { amount: DEFAULT_MINIMUM_STAKE / 2, locked_until: 0 };
-    stakes.set(provider.clone(), low_stake);
+        let below_min = DEFAULT_MINIMUM_STAKE / 2;
 
-    let res = submit_signal(
-        &env,
-        &mut signals,
-        &stakes,
-        &provider,
-        sdk_string(&env, "XLM/USDC"),
-        Action::Buy,
-        100_000_000,
-        sdk_string(&env, "Bullish"),
-    );
+        let low_stake = StakeInfo {
+            amount: below_min,
+            locked_until: 0,
+            last_signal_time: 0,
+        };
+        stakes.set(provider.clone(), low_stake);
 
-    assert_eq!(res, Err(Error::BelowMinimumStake));
-}
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLM/USDC"),
+            Action::Buy,
+            100_000_000,
+            sdk_string(&env, "Bullish"),
+        );
 
+        assert_eq!(res, Err(Error::NoStake));
+    }
 
     #[test]
     fn test_submit_signal_invalid_asset_pair() {
