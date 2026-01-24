@@ -13,3 +13,16 @@ pub enum Action {
     Hold,
 }
 
+/// Structure to store a signal
+#[contracttype]
+#[derive(Clone)]
+pub struct Signal {
+    pub provider: Address,
+    pub asset_pair: String,
+    pub action: Action,
+    pub price: i128,
+    pub rationale: String,
+    pub timestamp: u64,
+    pub expiry: u64,
+}
+
