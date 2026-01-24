@@ -32,7 +32,7 @@ jobs:
         run: cd stellar-swipe/contracts/market && cargo fmt --check
       
       - name: Clippy
-        run: cd stellar-swipe/contracts/market && cargo clippy -- -D warnings
+        run: cd stellar-swipe/contracts/stellar-swipe && cargo clippy -- -D warnings
 
       - name: Tests
         run: cd contracts/stellar-swipe && cargo test
