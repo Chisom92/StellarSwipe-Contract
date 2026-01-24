@@ -26,3 +26,14 @@ pub struct Signal {
     pub expiry: u64,
 }
 
+/// Contract-level error enum
+#[derive(Debug, PartialEq)]
+pub enum Error {
+    NoStake,
+    BelowMinimumStake,
+    InvalidAssetPair,
+    InvalidPrice,
+    EmptyRationale,
+    DuplicateSignal,
+}
+
