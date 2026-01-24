@@ -101,11 +101,12 @@ pub fn can_submit_signal(
 
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+      use super::*;
     use soroban_sdk::{testutils::Address as TestAddress, Address, Env, Map};
-    use soroban_sdk::testutils::Ledger; // <- needed for set_timestamp
+    use soroban_sdk::testutils::Ledger;
 
     fn setup_env() -> Env {
         Env::default()
@@ -113,6 +114,29 @@ mod tests {
 
     fn sample_provider(env: &Env) -> Address {
         <Address as TestAddress>::generate(env)
+    }
+
+    #[test]
+    fn test_stake_accumulation_and_minimum() {
+        let env = setup_env();
+        let mut storage: Map<Address, StakeInfo> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        // First stake below minimum fails
+        assert_eq!(
+            stake(&env, &mut storage, &provider, 50_000_000),
+            Err(ContractError::BelowMinimumStake)
+        );
+
+        // Stake meeting minimum succeeds
+        assert!(stake(&env, &mut storage, &provider, 100_000_000).is_ok());
+        let info = storage.get(provider.clone()).unwrap();
+        assert_eq!(info.amount, 100_000_000);
+
+        // Additional stake accumulates
+        assert!(stake(&env, &mut storage, &provider, 50_000_000).is_ok());
+        let info = storage.get(provider.clone()).unwrap();
+        assert_eq!(info.amount, 150_000_000);
     }
 
     #[test]
@@ -143,5 +167,37 @@ mod tests {
         // Now unstake should succeed
         let amount = unstake(&env, &mut storage, &provider).unwrap();
         assert_eq!(amount, 100_000_000);
+    }
+
+    #[test]
+    fn test_record_signal_updates_lock() {
+        let env = setup_env();
+        let mut storage: Map<Address, StakeInfo> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        stake(&env, &mut storage, &provider, 100_000_000).unwrap();
+        let before = env.ledger().timestamp();
+
+        record_signal(&env, &mut storage, &provider).unwrap();
+        let info = storage.get(provider.clone()).unwrap();
+
+        assert_eq!(info.last_signal_time, before);
+        assert_eq!(info.locked_until, before + UNSTAKE_LOCK_PERIOD);
+    }
+
+    #[test]
+    fn test_can_submit_signal() {
+        let env = setup_env();
+        let mut storage: Map<Address, StakeInfo> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        // No stake yet
+        assert_eq!(
+            can_submit_signal(&storage, &provider),
+            Err(ContractError::NoStakeFound)
+        );
+
+        stake(&env, &mut storage, &provider, 100_000_000).unwrap();
+        assert!(can_submit_signal(&storage, &provider).is_ok());
     }
 }
