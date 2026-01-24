@@ -14,25 +14,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository
       - uses: actions/checkout@v4
 
+      # Setup Rust toolchain with required components and target
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
+      # Cache dependencies for faster builds
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: stellar-swipe/contracts/stellar-swipe
 
+      # Format check
       - name: Format check
-        run: cargo fmt --all --check
+        run: cargo fmt --manifest-path stellar-swipe/Cargo.toml --check
 
+      # Clippy linter
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
-
+        run: cargo clippy --manifest-path stellar-swipe/Cargo.toml -- -D warnings
+      # Run tests
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --manifest-path stellar-swipe/Cargo.toml --workspace
 
+      # Build wasm target
       - name: Build (wasm)
-        run: cargo build --workspace --target wasm32-unknown-unknown
+        run: cargo build --manifest-path stellar-swipe/Cargo.toml --workspace --target wasm32-unknown-unknown
