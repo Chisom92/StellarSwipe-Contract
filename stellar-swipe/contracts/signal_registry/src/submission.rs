@@ -108,8 +108,14 @@ pub fn submit_signal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, Env, Map, String as SdkString};
-    use crate::stake::{stake, StakeInfo, DEFAULT_MINIMUM_STAKE, can_submit_signal};
+    use soroban_sdk::{testutils::Address as TestAddress, Env, Map};
+
+    use crate::stake::{stake, StakeInfo, DEFAULT_MINIMUM_STAKE};
+
+    // Helper to create soroban_sdk::String in the correct environment
+    fn sdk_string(env: &Env, s: &str) -> String {
+        String::from_slice(env, s)
+    }
 
     fn setup_env() -> Env {
         Env::default()
@@ -117,10 +123,6 @@ mod tests {
 
     fn sample_provider(env: &Env) -> Address {
         <Address as TestAddress>::generate(env)
-    }
-
-    fn sdk_string(s: &str) -> SdkString {
-        SdkString::from_slice(&Env::default(), s)
     }
 
     #[test]
@@ -139,19 +141,20 @@ mod tests {
             &mut signals,
             &stakes,
             &provider,
-            sdk_string("XLM/USDC"),
+            sdk_string(&env, "XLM/USDC"),
             Action::Buy,
             120_000_000,
-            sdk_string("Bullish on XLM"),
+            sdk_string(&env, "Bullish on XLM"),
         )
         .unwrap();
 
         assert_eq!(signal_id, 1);
         let stored = signals.get(signal_id).unwrap();
         assert_eq!(stored.provider, provider);
-        assert_eq!(stored.asset_pair.to_bytes(), sdk_string("XLM/USDC").to_bytes());
+        assert_eq!(stored.asset_pair.to_bytes(), sdk_string(&env, "XLM/USDC").to_bytes());
         assert_eq!(stored.action, Action::Buy);
         assert_eq!(stored.price, 120_000_000);
+        assert_eq!(stored.rationale.to_bytes(), sdk_string(&env, "Bullish on XLM").to_bytes());
     }
 
     #[test]
@@ -166,10 +169,10 @@ mod tests {
             &mut signals,
             &stakes,
             &provider,
-            sdk_string("XLM/USDC"),
+            sdk_string(&env, "XLM/USDC"),
             Action::Buy,
             120_000_000,
-            sdk_string("Bullish on XLM"),
+            sdk_string(&env, "Bullish on XLM"),
         );
 
         assert_eq!(res, Err(Error::NoStake));
@@ -189,13 +192,36 @@ mod tests {
             &mut signals,
             &stakes,
             &provider,
-            sdk_string("XLM/USDC"),
+            sdk_string(&env, "XLM/USDC"),
             Action::Buy,
-            0,
-            sdk_string("Bullish on XLM"),
+            0, // invalid price
+            sdk_string(&env, "Bullish on XLM"),
         );
 
         assert_eq!(res, Err(Error::InvalidPrice));
+    }
+
+    #[test]
+    fn test_submit_signal_empty_rationale() {
+        let env = setup_env();
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut signals: Map<u64, Signal> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLM/USDC"),
+            Action::Buy,
+            100_000_000,
+            sdk_string(&env, ""),
+        );
+
+        assert_eq!(res, Err(Error::EmptyRationale));
     }
 
     #[test]
@@ -207,16 +233,15 @@ mod tests {
 
         stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
-        // First signal
         let _ = submit_signal(
             &env,
             &mut signals,
             &stakes,
             &provider,
-            sdk_string("XLM/USDC"),
+            sdk_string(&env, "XLM/USDC"),
             Action::Buy,
             120_000_000,
-            sdk_string("Bullish"),
+            sdk_string(&env, "Bullish"),
         )
         .unwrap();
 
@@ -226,12 +251,85 @@ mod tests {
             &mut signals,
             &stakes,
             &provider,
-            sdk_string("XLM/USDC"),
+            sdk_string(&env, "XLM/USDC"),
             Action::Buy,
             120_000_000,
-            sdk_string("Bullish"),
+            sdk_string(&env, "Bullish"),
         );
 
         assert_eq!(res, Err(Error::DuplicateSignal));
+    }
+
+    #[test]
+    fn test_submit_signal_below_minimum_stake() {
+        let env = setup_env();
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut signals: Map<u64, Signal> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        // Stake less than minimum
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE / 2).unwrap();
+
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLM/USDC"),
+            Action::Buy,
+            100_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+
+        assert_eq!(res, Err(Error::BelowMinimumStake));
+    }
+
+    #[test]
+    fn test_submit_signal_invalid_asset_pair() {
+        let env = setup_env();
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut signals: Map<u64, Signal> = Map::new(&env);
+        let provider = sample_provider(&env);
+
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+
+        // Missing slash
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLMUSDC"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
+
+        // Too short
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "X/US"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
+
+        // Too long
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLM/USDC_EXTRA_LONG_PAIR"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
     }
 }
