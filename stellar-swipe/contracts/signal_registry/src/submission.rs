@@ -44,16 +44,16 @@ pub fn submit_signal(
 ) -> Result<u64, Error> {
     // Verify provider stake
     can_submit_signal(provider_stakes, provider).map_err(|_| Error::NoStake)?;
-    let stake_info = provider_stakes.get(provider.clone()).ok_or(Error::NoStake)?;
+    let stake_info = provider_stakes.get(provider.clone()).unwrap();
     if stake_info.amount < DEFAULT_MINIMUM_STAKE {
         return Err(Error::BelowMinimumStake);
     }
 
     // Validate asset pair
     let asset_bytes = asset_pair.to_bytes();
-    let has_slash = asset_bytes.iter().any(|b| b == b'/');
+    let has_slash = asset_bytes.iter().any(|b| *b == b'/');
     let len = asset_bytes.len();
-    if !has_slash || len < 5 || len > 20 {
+    if !has_slash || len < 3 || len > 20 {
         return Err(Error::InvalidAssetPair);
     }
 
@@ -109,7 +109,7 @@ mod tests {
     use crate::stake::{stake, StakeInfo, DEFAULT_MINIMUM_STAKE};
 
     fn sdk_string(env: &Env, s: &str) -> String {
-        String::from_str(env, s)
+        String::from_slice(env, s)
     }
 
     fn setup_env() -> Env {
@@ -123,11 +123,11 @@ mod tests {
     #[test]
     fn test_submit_signal_success() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
         let signal_id = submit_signal(
             &env,
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_submit_signal_no_stake() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
@@ -174,11 +174,11 @@ mod tests {
     #[test]
     fn test_submit_signal_invalid_price() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
         let res = submit_signal(
             &env,
@@ -197,11 +197,11 @@ mod tests {
     #[test]
     fn test_submit_signal_empty_rationale() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
         let res = submit_signal(
             &env,
@@ -220,11 +220,11 @@ mod tests {
     #[test]
     fn test_submit_signal_duplicate() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
         let _ = submit_signal(
             &env,
@@ -255,11 +255,11 @@ mod tests {
     #[test]
     fn test_submit_signal_below_minimum_stake() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE / 2).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE / 2).unwrap();
 
         let res = submit_signal(
             &env,
@@ -278,30 +278,49 @@ mod tests {
     #[test]
     fn test_submit_signal_invalid_asset_pair() {
         let env = setup_env();
-        let stakes: Map<Address, StakeInfo> = Map::new(&env);
+        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
         let mut signals: Map<u64, Signal> = Map::new(&env);
         let provider = sample_provider(&env);
 
-        stake(&env, &stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
+        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE).unwrap();
 
-        let invalid_pairs = [
-            "XLMUSDC",
-            "X/US",
-            "XLM/USDC_EXTRA_LONG_PAIR"
-        ];
+        // Missing slash
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLMUSDC"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
 
-        for pair in invalid_pairs {
-            let res = submit_signal(
-                &env,
-                &mut signals,
-                &stakes,
-                &provider,
-                sdk_string(&env, pair),
-                Action::Buy,
-                120_000_000,
-                sdk_string(&env, "Bullish"),
-            );
-            assert_eq!(res, Err(Error::InvalidAssetPair));
-        }
+        // Too short
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "X/US"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
+
+        // Too long
+        let res = submit_signal(
+            &env,
+            &mut signals,
+            &stakes,
+            &provider,
+            sdk_string(&env, "XLM/USDC_EXTRA_LONG_PAIR"),
+            Action::Buy,
+            120_000_000,
+            sdk_string(&env, "Bullish"),
+        );
+        assert_eq!(res, Err(Error::InvalidAssetPair));
     }
 }
