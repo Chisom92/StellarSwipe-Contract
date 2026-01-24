@@ -34,7 +34,7 @@ pub struct Signal {
 #[derive(Clone, Debug, Default)]
 pub struct SignalStats {
     pub total_copies: u64,
-    pub success_rate: u32, 
+    pub success_rate: u32,
     pub avg_return: i128,
     pub total_volume: i128,
 }
