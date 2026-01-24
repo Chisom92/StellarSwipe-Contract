@@ -252,28 +252,31 @@ mod tests {
         assert_eq!(res, Err(Error::DuplicateSignal));
     }
 
-    #[test]
-    fn test_submit_signal_below_minimum_stake() {
-        let env = setup_env();
-        let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
-        let mut signals: Map<u64, Signal> = Map::new(&env);
-        let provider = sample_provider(&env);
+ #[test]
+fn test_submit_signal_below_minimum_stake() {
+    let env = setup_env();
+    let mut stakes: Map<Address, StakeInfo> = Map::new(&env);
+    let mut signals: Map<u64, Signal> = Map::new(&env);
+    let provider = sample_provider(&env);
 
-        stake(&env, &mut stakes, &provider, DEFAULT_MINIMUM_STAKE / 2).unwrap();
+    // Manually insert a stake below minimum
+    let low_stake = StakeInfo { amount: DEFAULT_MINIMUM_STAKE / 2, locked_until: 0 };
+    stakes.set(provider.clone(), low_stake);
 
-        let res = submit_signal(
-            &env,
-            &mut signals,
-            &stakes,
-            &provider,
-            sdk_string(&env, "XLM/USDC"),
-            Action::Buy,
-            100_000_000,
-            sdk_string(&env, "Bullish"),
-        );
+    let res = submit_signal(
+        &env,
+        &mut signals,
+        &stakes,
+        &provider,
+        sdk_string(&env, "XLM/USDC"),
+        Action::Buy,
+        100_000_000,
+        sdk_string(&env, "Bullish"),
+    );
 
-        assert_eq!(res, Err(Error::BelowMinimumStake));
-    }
+    assert_eq!(res, Err(Error::BelowMinimumStake));
+}
+
 
     #[test]
     fn test_submit_signal_invalid_asset_pair() {
