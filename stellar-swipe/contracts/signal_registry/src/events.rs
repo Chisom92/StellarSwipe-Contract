@@ -1,0 +1,37 @@
+use soroban_sdk::{Address, Env, Symbol};
+
+pub fn emit_admin_transferred(env: &Env, old_admin: Address, new_admin: Address) {
+    let topics = (Symbol::new(env, "admin_transferred"), old_admin, new_admin);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_parameter_updated(env: &Env, parameter: Symbol, old_value: i128, new_value: i128) {
+    let topics = (Symbol::new(env, "parameter_updated"), parameter);
+    env.events().publish(topics, (old_value, new_value));
+}
+
+pub fn emit_trading_paused(env: &Env, paused_by: Address, expires_at: u64) {
+    let topics = (Symbol::new(env, "trading_paused"), paused_by);
+    let timestamp = env.ledger().timestamp();
+    env.events().publish(topics, (timestamp, expires_at));
+}
+
+pub fn emit_trading_unpaused(env: &Env, unpaused_by: Address) {
+    let topics = (Symbol::new(env, "trading_unpaused"), unpaused_by);
+    let timestamp = env.ledger().timestamp();
+    env.events().publish(topics, timestamp);
+}
+
+pub fn emit_multisig_signer_added(env: &Env, signer: Address, added_by: Address) {
+    let topics = (Symbol::new(env, "multisig_signer_added"), signer, added_by);
+    env.events().publish(topics, ());
+}
+
+pub fn emit_multisig_signer_removed(env: &Env, signer: Address, removed_by: Address) {
+    let topics = (
+        Symbol::new(env, "multisig_signer_removed"),
+        signer,
+        removed_by,
+    );
+    env.events().publish(topics, ());
+}

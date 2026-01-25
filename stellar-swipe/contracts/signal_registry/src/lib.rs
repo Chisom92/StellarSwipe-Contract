@@ -1,10 +1,18 @@
 #![no_std]
 
+mod admin;
+mod errors;
+#[allow(deprecated)]
+mod events;
 mod stake;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, Map, String};
-
+use admin::{
+    get_admin, get_admin_config, get_pause_info, init_admin, is_trading_paused, require_not_paused,
+    AdminConfig, PauseInfo,
+};
+use errors::AdminError;
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, Map, String, Vec};
 use types::{Signal, SignalAction, SignalStats, SignalStatus};
 
 const MAX_EXPIRY_SECONDS: u64 = 30 * 24 * 60 * 60;
@@ -22,6 +30,106 @@ enum StorageKey {
 
 #[contractimpl]
 impl SignalRegistry {
+    /* =========================
+       INITIALIZATION
+    ========================== */
+
+    /// Initialize contract with admin
+    pub fn initialize(env: Env, admin: Address) -> Result<(), AdminError> {
+        init_admin(&env, admin)
+    }
+
+    /* =========================
+       ADMIN FUNCTIONS
+    ========================== */
+
+    pub fn set_min_stake(env: Env, caller: Address, new_amount: i128) -> Result<(), AdminError> {
+        admin::set_min_stake(&env, &caller, new_amount)
+    }
+
+    pub fn set_trade_fee(env: Env, caller: Address, new_fee_bps: u32) -> Result<(), AdminError> {
+        admin::set_trade_fee(&env, &caller, new_fee_bps)
+    }
+
+    pub fn set_risk_defaults(
+        env: Env,
+        caller: Address,
+        stop_loss: u32,
+        position_limit: u32,
+    ) -> Result<(), AdminError> {
+        admin::set_risk_defaults(&env, &caller, stop_loss, position_limit)
+    }
+
+    pub fn pause_trading(env: Env, caller: Address) -> Result<(), AdminError> {
+        admin::pause_trading(&env, &caller)
+    }
+
+    pub fn unpause_trading(env: Env, caller: Address) -> Result<(), AdminError> {
+        admin::unpause_trading(&env, &caller)
+    }
+
+    pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), AdminError> {
+        admin::transfer_admin(&env, &caller, new_admin)
+    }
+
+    pub fn get_admin(env: Env) -> Result<Address, AdminError> {
+        get_admin(&env)
+    }
+
+    pub fn get_config(env: Env) -> AdminConfig {
+        get_admin_config(&env)
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        is_trading_paused(&env)
+    }
+
+    pub fn get_pause_info(env: Env) -> PauseInfo {
+        get_pause_info(&env)
+    }
+
+    // Multi-sig functions
+    pub fn enable_multisig(
+        env: Env,
+        caller: Address,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), AdminError> {
+        admin::enable_multisig(&env, &caller, signers, threshold)
+    }
+
+    pub fn disable_multisig(env: Env, caller: Address) -> Result<(), AdminError> {
+        admin::disable_multisig(&env, &caller)
+    }
+
+    pub fn is_multisig_enabled(env: Env) -> bool {
+        admin::is_multisig_enabled(&env)
+    }
+
+    pub fn get_multisig_signers(env: Env) -> Vec<Address> {
+        admin::get_multisig_signers(&env)
+    }
+
+    pub fn get_multisig_threshold(env: Env) -> u32 {
+        admin::get_multisig_threshold(&env)
+    }
+
+    pub fn add_multisig_signer(
+        env: Env,
+        caller: Address,
+        new_signer: Address,
+    ) -> Result<(), AdminError> {
+        admin::add_multisig_signer(&env, &caller, new_signer)
+    }
+
+    pub fn remove_multisig_signer(
+        env: Env,
+        caller: Address,
+        signer_to_remove: Address,
+    ) -> Result<(), AdminError> {
+        admin::remove_multisig_signer(&env, &caller, signer_to_remove)
+    }
+
     /* =========================
        INTERNAL HELPERS
     ========================== */
@@ -94,7 +202,10 @@ impl SignalRegistry {
         price: i128,
         rationale: String,
         expiry: u64,
-    ) -> u64 {
+    ) -> Result<u64, AdminError> {
+        // Check if trading is paused
+        require_not_paused(&env)?;
+
         provider.require_auth();
 
         Self::validate_asset_pair(&env, &asset_pair);
@@ -135,7 +246,7 @@ impl SignalRegistry {
             Self::save_provider_stats_map(&env, &stats);
         }
 
-        id
+        Ok(id)
     }
 
     pub fn get_signal(env: Env, signal_id: u64) -> Option<Signal> {
