@@ -54,7 +54,7 @@ pub fn submit_signal(
     let asset_bytes = asset_pair.to_bytes();
     let has_slash = asset_bytes.iter().any(|b| b == b'/');
     let len = asset_bytes.len();
-    [allow(clippy::manual_range_contains)]
+    [allow(clippy::manual_range_contains)];
     if !has_slash || len < 5 || len > 20 {
         return Err(Error::InvalidAssetPair);
     }
