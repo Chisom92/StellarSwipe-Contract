@@ -15,3 +15,14 @@ pub enum AdminError {
     InsufficientSignatures = 9,
     DuplicateSigner = 10,
 }
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum FeeError {
+    TradeTooSmall = 100,
+    FeeRoundedToZero = 101,
+    ArithmeticOverflow = 102,
+    InvalidAmount = 103,
+    InvalidProviderAddress = 104,
+}

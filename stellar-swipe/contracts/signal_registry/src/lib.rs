@@ -4,6 +4,8 @@ mod admin;
 mod errors;
 #[allow(deprecated)]
 mod events;
+#[allow(dead_code)]
+mod fees;
 mod stake;
 mod types;
 
@@ -13,7 +15,7 @@ use admin::{
 };
 use errors::AdminError;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, Map, String, Vec};
-use types::{Signal, SignalAction, SignalStats, SignalStatus};
+use types::{Asset, FeeBreakdown, Signal, SignalAction, SignalStats, SignalStatus};
 
 const MAX_EXPIRY_SECONDS: u64 = 30 * 24 * 60 * 60;
 
@@ -257,6 +259,40 @@ impl SignalRegistry {
     pub fn get_provider_stats(env: Env, provider: Address) -> Option<SignalStats> {
         let stats = Self::get_provider_stats_map(&env);
         stats.get(provider)
+    }
+
+    /* =========================
+       FEE MANAGEMENT FUNCTIONS
+    ========================== */
+
+    pub fn set_platform_treasury(
+        env: Env,
+        caller: Address,
+        treasury: Address,
+    ) -> Result<(), AdminError> {
+        admin::require_admin(&env, &caller)?;
+        caller.require_auth();
+        fees::set_platform_treasury(&env, treasury);
+        Ok(())
+    }
+
+    pub fn get_platform_treasury(env: Env) -> Option<Address> {
+        fees::get_platform_treasury(&env)
+    }
+
+    pub fn get_treasury_balance(env: Env, asset: Asset) -> i128 {
+        fees::get_treasury_balance(&env, asset)
+    }
+
+    pub fn get_all_treasury_balances(env: Env) -> Map<Asset, i128> {
+        fees::get_all_treasury_balances(&env)
+    }
+
+    pub fn calculate_fee_preview(
+        _env: Env,
+        trade_amount: i128,
+    ) -> Result<FeeBreakdown, errors::FeeError> {
+        fees::calculate_fee_breakdown(trade_amount)
     }
 }
 

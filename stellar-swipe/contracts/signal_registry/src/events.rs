@@ -1,3 +1,4 @@
+use crate::types::Asset;
 use soroban_sdk::{Address, Env, Symbol};
 
 pub fn emit_admin_transferred(env: &Env, old_admin: Address, new_admin: Address) {
@@ -34,4 +35,23 @@ pub fn emit_multisig_signer_removed(env: &Env, signer: Address, removed_by: Addr
         removed_by,
     );
     env.events().publish(topics, ());
+}
+
+pub fn emit_fee_collected(
+    env: &Env,
+    asset: Asset,
+    total_fee: i128,
+    platform_fee: i128,
+    provider_fee: i128,
+    provider: Address,
+    platform_treasury: Address,
+) {
+    let topics = (
+        Symbol::new(env, "fee_collected"),
+        asset.symbol,
+        provider,
+        platform_treasury,
+    );
+    env.events()
+        .publish(topics, (total_fee, platform_fee, provider_fee));
 }

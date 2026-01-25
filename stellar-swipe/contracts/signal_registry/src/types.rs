@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, String};
+use soroban_sdk::{contracttype, Address, String, Symbol};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,4 +37,28 @@ pub struct SignalStats {
     pub success_rate: u32,
     pub avg_return: i128,
     pub total_volume: i128,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub enum FeeStorageKey {
+    PlatformTreasury,
+    ProviderTreasury,
+    TreasuryBalances,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct FeeBreakdown {
+    pub total_fee: i128,
+    pub platform_fee: i128,
+    pub provider_fee: i128,
+    pub trade_amount_after_fee: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Asset {
+    pub symbol: Symbol,
+    pub contract: Address,
 }

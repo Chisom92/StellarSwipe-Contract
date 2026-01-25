@@ -341,3 +341,90 @@ fn provider_stats_initialized() {
     let stats = client.get_provider_stats(&provider).unwrap();
     assert_eq!(stats.total_copies, 0);
 }
+
+#[test]
+fn test_fee_calculation_and_collection() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Set platform treasury
+    let platform_treasury = Address::generate(&env);
+    client.set_platform_treasury(&admin, &platform_treasury);
+
+    // Preview fee for 1000 XLM trade
+    let breakdown = client.calculate_fee_preview(&1_000_000_000);
+
+    assert_eq!(breakdown.total_fee, 1_000_000); // 1 XLM (0.1%)
+    assert_eq!(breakdown.platform_fee, 700_000); // 0.7 XLM (70%)
+    assert_eq!(breakdown.provider_fee, 300_000); // 0.3 XLM (30%)
+    assert_eq!(breakdown.trade_amount_after_fee, 999_000_000); // 999 XLM
+}
+
+#[test]
+fn test_minimum_trade_enforcement() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // Trade below minimum should fail
+    let result = client.try_calculate_fee_preview(&999);
+    assert!(result.is_err());
+
+    // Trade at minimum should work
+    let result = client.try_calculate_fee_preview(&1000);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_platform_treasury_management() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    // No treasury set initially
+    assert_eq!(client.get_platform_treasury(), None);
+
+    // Set treasury
+    let treasury = Address::generate(&env);
+    client.set_platform_treasury(&admin, &treasury);
+    assert_eq!(client.get_platform_treasury(), Some(treasury));
+}
+
+#[test]
+fn test_unauthorized_treasury_update() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    // Non-admin cannot set treasury
+    let result = client.try_set_platform_treasury(&attacker, &treasury);
+    assert!(result.is_err());
+}
