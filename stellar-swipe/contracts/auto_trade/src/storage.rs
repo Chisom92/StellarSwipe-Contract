@@ -3,19 +3,19 @@ use soroban_sdk::{contracttype, Address, Env};
 #[contracttype]
 #[derive(Clone)]
 pub struct Signal {
-    pub id: u64,
-    pub expiry: u64,
-    pub base_asset: u32,   // placeholder
-    pub quote_asset: u32,  // placeholder
+    pub signal_id: u64,
     pub price: i128,
+    pub expiry: u64,
+    pub base_asset: u32,
 }
 
-/// Fetch signal (mock for now)
-pub fn get_signal(_env: &Env, _signal_id: u64) -> Option<Signal> {
-    None
+pub fn get_signal(env: &Env, id: u64) -> Option<Signal> {
+    env.storage().persistent().get(&("signal", id))
 }
 
-/// Authorization check (mock)
-pub fn is_authorized(_env: &Env, _user: &Address) -> bool {
-    true
+pub fn is_authorized(env: &Env, user: &Address) -> bool {
+    env.storage()
+        .persistent()
+        .get(&(user.clone(), "authorized"))
+        .unwrap_or(false)
 }
