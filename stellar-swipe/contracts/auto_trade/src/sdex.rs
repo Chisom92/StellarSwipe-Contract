@@ -102,23 +102,23 @@ mod tests {
     use soroban_sdk::testutils::{Ledger, LedgerInfo, Address as _};
     use soroban_sdk::{Env, Address, symbol_short};
 
-    fn setup_env() -> (Env, Address) {
-        let env = Env::default();
-        let contract_id = Address::generate(&env);
+   fn setup_env() -> (Env, Address) {
+    let env = Env::default();
+    let contract_id = Address::generate(&env);
 
-        env.ledger().set(LedgerInfo {
-            timestamp: 1_000,
-            protocol_version: 20,
-            sequence_number: 1,
-            network_id: [0; 32],
-            base_reserve: 10,
-            max_entry_ttl: 1000,
-            min_persistent_entry_ttl: 100,
-            min_temp_entry_ttl: 100,
-        });
+    env.ledger().set(LedgerInfo {
+        timestamp: 1_000,
+        protocol_version: 25,  // Updated to match current Stellar protocol
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        max_entry_ttl: 1000,
+        min_persistent_entry_ttl: 100,
+        min_temp_entry_ttl: 100,
+    });
 
-        (env, contract_id)
-    }
+    (env, contract_id)
+}
 
     fn setup_signal(env: &Env, id: u64) -> Signal {
         Signal {
