@@ -2,13 +2,7 @@
 
 use super::*;
 use soroban_sdk::{testutils::{Address as _, Ledger as _}, Env, symbol_short};
-use crate::storage::Signal;
-
-#[contracttype]
-enum MockDataKey {
-    Signal(u64),
-    Authorized(Address),
-}
+use crate::storage::{Signal, DataKey};
 
 fn setup_env() -> Env {
     let env = Env::default();
@@ -55,7 +49,7 @@ fn test_execute_trade_signal_not_found() {
         let res = AutoTradeContract::execute_trade(
             env.clone(),
             user.clone(),
-            1,
+            999,
             OrderType::Market,
             100,
         );
@@ -73,7 +67,7 @@ fn test_execute_trade_signal_expired() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() - 1);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
         let res = AutoTradeContract::execute_trade(
             env.clone(),
             user.clone(),
@@ -95,8 +89,8 @@ fn test_execute_trade_unauthorized() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        // Not setting authorized to true
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        // Not setting authorization
         let res = AutoTradeContract::execute_trade(
             env.clone(),
             user.clone(),
@@ -118,10 +112,11 @@ fn test_execute_trade_insufficient_balance() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
         let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &50i128); // insufficient
+        env.storage().temporary().set(&balance_key, &50i128); // insufficient balance
+
         let res = AutoTradeContract::execute_trade(
             env.clone(),
             user.clone(),
@@ -143,12 +138,10 @@ fn test_execute_trade_market_full_fill() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
-        let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &500i128);
-        let liquidity_key = (symbol_short!("liquidity"), signal_id);
-        env.storage().temporary().set(&liquidity_key, &500i128);
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
+        env.storage().temporary().set(&(user.clone(), symbol_short!("balance")), &500i128);
+        env.storage().temporary().set(&(symbol_short!("liquidity"), signal_id), &500i128);
 
         let res = AutoTradeContract::execute_trade(
             env.clone(),
@@ -173,12 +166,10 @@ fn test_execute_trade_market_partial_fill() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
-        let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &500i128);
-        let liquidity_key = (symbol_short!("liquidity"), signal_id);
-        env.storage().temporary().set(&liquidity_key, &100i128);
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
+        env.storage().temporary().set(&(user.clone(), symbol_short!("balance")), &500i128);
+        env.storage().temporary().set(&(symbol_short!("liquidity"), signal_id), &100i128);
 
         let res = AutoTradeContract::execute_trade(
             env.clone(),
@@ -203,12 +194,10 @@ fn test_execute_trade_limit_filled() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
-        let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &500i128);
-        let price_key = (symbol_short!("price"), signal_id);
-        env.storage().temporary().set(&price_key, &90i128); // market_price < signal.price
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
+        env.storage().temporary().set(&(user.clone(), symbol_short!("balance")), &500i128);
+        env.storage().temporary().set(&(symbol_short!("price"), signal_id), &90i128);
 
         let res = AutoTradeContract::execute_trade(
             env.clone(),
@@ -233,12 +222,10 @@ fn test_execute_trade_limit_not_filled() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
-        let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &500i128);
-        let price_key = (symbol_short!("price"), signal_id);
-        env.storage().temporary().set(&price_key, &150i128); // market_price > signal.price
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
+        env.storage().temporary().set(&(user.clone(), symbol_short!("balance")), &500i128);
+        env.storage().temporary().set(&(symbol_short!("price"), signal_id), &150i128);
 
         let res = AutoTradeContract::execute_trade(
             env.clone(),
@@ -263,12 +250,10 @@ fn test_get_trade_existing() {
     let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
 
     env.as_contract(&contract_id, || {
-        env.storage().persistent().set(&MockDataKey::Signal(signal_id), &signal);
-        env.storage().persistent().set(&MockDataKey::Authorized(user.clone()), &true);
-        let balance_key = (user.clone(), symbol_short!("balance"));
-        env.storage().temporary().set(&balance_key, &500i128);
-        let liquidity_key = (symbol_short!("liquidity"), signal_id);
-        env.storage().temporary().set(&liquidity_key, &500i128);
+        env.storage().persistent().set(&DataKey::Signal(signal_id), &signal);
+        env.storage().persistent().set(&DataKey::Authorized(user.clone()), &true);
+        env.storage().temporary().set(&(user.clone(), symbol_short!("balance")), &500i128);
+        env.storage().temporary().set(&(symbol_short!("liquidity"), signal_id), &500i128);
     });
 
     env.as_contract(&contract_id, || {
