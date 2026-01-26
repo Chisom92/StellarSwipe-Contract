@@ -99,26 +99,16 @@ pub fn execute_limit_order(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Ledger, LedgerInfo, Address as _};
     use soroban_sdk::{Env, Address, symbol_short};
 
-   fn setup_env() -> (Env, Address) {
-    let env = Env::default();
-    let contract_id = Address::generate(&env);
-
-fn setup_env() -> (Env, Address) {
-    let env = Env::default();
-    let contract_id = Address::generate(&env);
-
-    // Only set timestamp; host will handle protocol version
-    env.ledger().set_timestamp(1_000);
-
-    (env, contract_id)
-}
-
-
-    (env, contract_id)
-}
+    // Create Env + contract context
+    fn setup_env() -> (Env, Address) {
+        let env = Env::default();
+        let contract_id = Address::generate(&env);
+        // Only set timestamp, no protocol version
+        env.ledger().set_timestamp(1_000);
+        (env, contract_id)
+    }
 
     fn setup_signal(env: &Env, id: u64) -> Signal {
         Signal {
@@ -135,10 +125,10 @@ fn setup_env() -> (Env, Address) {
         let user = Address::generate(&env);
 
         env.as_contract(&contract_id, || {
-            let key = (symbol_short!("liquidity"), 1u64);
+            // Set liquidity for the signal
             env.storage()
                 .temporary()
-                .set(&key, &500i128);
+                .set(&(symbol_short!("liquidity"), 1u64), &500i128);
 
             let signal = setup_signal(&env, 1);
             let res = execute_market_order(&env, &user, &signal, 400).unwrap();
@@ -152,10 +142,10 @@ fn setup_env() -> (Env, Address) {
         let user = Address::generate(&env);
 
         env.as_contract(&contract_id, || {
-            let key = (symbol_short!("liquidity"), 2u64);
+            // Set partial liquidity
             env.storage()
                 .temporary()
-                .set(&key, &100i128);
+                .set(&(symbol_short!("liquidity"), 2u64), &100i128);
 
             let signal = setup_signal(&env, 2);
             let res = execute_market_order(&env, &user, &signal, 300).unwrap();
@@ -169,10 +159,10 @@ fn setup_env() -> (Env, Address) {
         let user = Address::generate(&env);
 
         env.as_contract(&contract_id, || {
-            let key = (symbol_short!("price"), 3u64);
+            // Set market price above limit price
             env.storage()
                 .temporary()
-                .set(&key, &150i128);
+                .set(&(symbol_short!("price"), 3u64), &150i128);
 
             let signal = setup_signal(&env, 3);
             let res = execute_limit_order(&env, &user, &signal, 200).unwrap();
@@ -186,10 +176,11 @@ fn setup_env() -> (Env, Address) {
         let user = Address::generate(&env);
 
         env.as_contract(&contract_id, || {
+            // Expired signal
             let signal = Signal {
                 signal_id: 4,
                 price: 100,
-                expiry: 999, // expired
+                expiry: env.ledger().timestamp() - 1,
                 base_asset: 1,
             };
 
