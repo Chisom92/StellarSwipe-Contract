@@ -1,4 +1,6 @@
+#![allow(dead_code)]
 use soroban_sdk::{contracttype, Address, Env, symbol_short};
+
 
 use crate::errors::AutoTradeError;
 use crate::storage::Signal;
@@ -95,24 +97,18 @@ pub fn execute_limit_order(
         executed_price: signal.price,
     })
 }
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Env, symbol_short};
-    use soroban_sdk::testutils::{Address as TestAddress, Ledger}; // Import trait
+    use soroban_sdk::{Env, Address, symbol_short};
+    use soroban_sdk::testutils::Ledger; // for set_timestamp
 
-    /// Helper to setup the environment and a contract ID
-    fn setup_env() -> (Env, soroban_sdk::Address) {
+    fn setup_env() -> Env {
         let env = Env::default();
-        // Fully-qualified call to generate
-        let contract_id = <soroban_sdk::Address as TestAddress>::generate(&env);
         env.ledger().set_timestamp(1_000);
-        (env, contract_id)
+        env
     }
 
-    /// Helper to create a signal
     fn setup_signal(env: &Env, id: u64) -> Signal {
         Signal {
             signal_id: id,
@@ -122,72 +118,68 @@ mod tests {
         }
     }
 
+    /// Correct test user generation for Soroban SDK v23.4.1
+    fn test_user(env: &Env, n: u8) -> Address {
+        let mut bytes = [0u8; 32];
+        bytes[0] = n; // simple differentiation
+        Address::from_array(env, &bytes)
+    }
+
     #[test]
     fn market_order_full_fill() {
-        let (env, contract_id) = setup_env();
-        let user = <soroban_sdk::Address as TestAddress>::generate(&env);
+        let env = setup_env();
+        let user = test_user(&env, 1);
 
-        env.as_contract(&contract_id, || {
-            // Set liquidity in temporary storage
-            let key = (symbol_short!("liquidity"), 1u64);
-            env.storage().temporary().set(&key, &500i128);
+        let key = (symbol_short!("liquidity"), 1u64);
+        env.storage().temporary().set(&key, &500i128);
 
-            let signal = setup_signal(&env, 1);
-            let res = execute_market_order(&env, &user, &signal, 400).unwrap();
-            assert_eq!(res.executed_amount, 400);
-            assert_eq!(res.executed_price, 100);
-        });
+        let signal = setup_signal(&env, 1);
+        let res = execute_market_order(&env, &user, &signal, 400).unwrap();
+        assert_eq!(res.executed_amount, 400);
+        assert_eq!(res.executed_price, 100);
     }
 
     #[test]
     fn market_order_partial_fill() {
-        let (env, contract_id) = setup_env();
-        let user = <soroban_sdk::Address as TestAddress>::generate(&env);
+        let env = setup_env();
+        let user = test_user(&env, 2);
 
-        env.as_contract(&contract_id, || {
-            // Set partial liquidity
-            let key = (symbol_short!("liquidity"), 2u64);
-            env.storage().temporary().set(&key, &100i128);
+        let key = (symbol_short!("liquidity"), 2u64);
+        env.storage().temporary().set(&key, &100i128);
 
-            let signal = setup_signal(&env, 2);
-            let res = execute_market_order(&env, &user, &signal, 300).unwrap();
-            assert_eq!(res.executed_amount, 100);
-            assert_eq!(res.executed_price, 100);
-        });
+        let signal = setup_signal(&env, 2);
+        let res = execute_market_order(&env, &user, &signal, 300).unwrap();
+        assert_eq!(res.executed_amount, 100);
+        assert_eq!(res.executed_price, 100);
     }
 
     #[test]
     fn limit_order_not_filled() {
-        let (env, contract_id) = setup_env();
-        let user = <soroban_sdk::Address as TestAddress>::generate(&env);
+        let env = setup_env();
+        let user = test_user(&env, 3);
 
-        env.as_contract(&contract_id, || {
-            // Set market price above signal price
-            let key = (symbol_short!("price"), 3u64);
-            env.storage().temporary().set(&key, &150i128);
+        let key = (symbol_short!("price"), 3u64);
+        env.storage().temporary().set(&key, &150i128);
 
-            let signal = setup_signal(&env, 3);
-            let res = execute_limit_order(&env, &user, &signal, 200).unwrap();
-            assert_eq!(res.executed_amount, 0);
-            assert_eq!(res.executed_price, 0);
-        });
+        let signal = setup_signal(&env, 3);
+        let res = execute_limit_order(&env, &user, &signal, 200).unwrap();
+        assert_eq!(res.executed_amount, 0);
+        assert_eq!(res.executed_price, 0);
     }
 
     #[test]
     fn expired_signal_rejected() {
-        let (env, contract_id) = setup_env();
-        let user = <soroban_sdk::Address as TestAddress>::generate(&env);
+        let env = setup_env();
+        let user = test_user(&env, 4);
 
-        env.as_contract(&contract_id, || {
-            let signal = Signal {
-                signal_id: 4,
-                price: 100,
-                expiry: env.ledger().timestamp() - 1, // expired
-                base_asset: 1,
-            };
+        let signal = Signal {
+            signal_id: 4,
+            price: 100,
+            expiry: env.ledger().timestamp() - 1,
+            base_asset: 1,
+        };
 
-            let err = execute_market_order(&env, &user, &signal, 100).unwrap_err();
-            assert_eq!(err, AutoTradeError::SignalExpired);
-        });
+        let err = execute_market_order(&env, &user, &signal, 100).unwrap_err();
+        assert_eq!(err, AutoTradeError::SignalExpired);
     }
 }
