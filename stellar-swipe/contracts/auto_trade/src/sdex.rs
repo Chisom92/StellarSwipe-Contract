@@ -101,7 +101,7 @@ pub fn execute_limit_order(
 mod tests {
     use super::*;
     use soroban_sdk::{Env, Address, symbol_short};
-    use soroban_sdk::testutils::Ledger; // for set_timestamp
+    use soroban_sdk::testutils::{Ledger, Address as TestAddress};
 
     fn setup_env() -> Env {
         let env = Env::default();
@@ -118,11 +118,10 @@ mod tests {
         }
     }
 
-    /// Correct test user generation for Soroban SDK v23.4.1
-    fn test_user(env: &Env, n: u8) -> Address {
-        let mut bytes = [0u8; 32];
-        bytes[0] = n; // simple differentiation
-        Address::from_array(env, &bytes)
+    /// Generate deterministic test addresses
+    fn test_user(_env: &Env, _n: u8) -> Address {
+        // Use Soroban TestAddress generator
+        <Address as TestAddress>::generate(&_env)
     }
 
     #[test]
@@ -130,6 +129,7 @@ mod tests {
         let env = setup_env();
         let user = test_user(&env, 1);
 
+        // Initialize liquidity in storage
         let key = (symbol_short!("liquidity"), 1u64);
         env.storage().temporary().set(&key, &500i128);
 
@@ -175,7 +175,7 @@ mod tests {
         let signal = Signal {
             signal_id: 4,
             price: 100,
-            expiry: env.ledger().timestamp() - 1,
+            expiry: env.ledger().timestamp() - 1, // expired
             base_asset: 1,
         };
 
