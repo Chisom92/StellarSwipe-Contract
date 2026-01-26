@@ -124,20 +124,30 @@ mod tests {
         <Address as TestAddress>::generate(&_env)
     }
 
-    #[test]
-    fn market_order_full_fill() {
-        let env = setup_env();
-        let user = test_user(&env, 1);
 
-        // Initialize liquidity in storage
+ #[test]
+fn market_order_full_fill() {
+    let env = Env::default();
+    let user = <Address as TestAddress>::generate(&env);
+
+    // Set up storage inside a contract context
+    env.as_contract(|| {
         let key = (symbol_short!("liquidity"), 1u64);
         env.storage().temporary().set(&key, &500i128);
+    });
 
-        let signal = setup_signal(&env, 1);
-        let res = execute_market_order(&env, &user, &signal, 400).unwrap();
-        assert_eq!(res.executed_amount, 400);
-        assert_eq!(res.executed_price, 100);
-    }
+    let signal = Signal {
+        signal_id: 1,
+        price: 100,
+        expiry: env.ledger().timestamp() + 1_000,
+        base_asset: 1,
+    };
+
+    let res = execute_market_order(&env, &user, &signal, 400).unwrap();
+    assert_eq!(res.executed_amount, 400);
+    assert_eq!(res.executed_price, 100);
+}
+
 
     #[test]
     fn market_order_partial_fill() {
