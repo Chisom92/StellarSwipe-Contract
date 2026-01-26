@@ -1,0 +1,13 @@
+use soroban_sdk::contracterror;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum AutoTradeError {
+    InvalidAmount = 1,
+    Unauthorized = 2,
+    SignalNotFound = 3,
+    SignalExpired = 4,
+    InsufficientBalance = 5,
+    InsufficientLiquidity = 6,
+}
