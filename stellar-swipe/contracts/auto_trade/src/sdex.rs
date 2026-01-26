@@ -1,4 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::testutils::Ledger; // needed for .set()
 
 use crate::errors::AutoTradeError;
 use crate::storage::Signal;
@@ -6,7 +7,6 @@ use crate::storage::Signal;
 /// ==========================
 /// Types
 /// ==========================
-
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExecutionResult {
@@ -15,9 +15,22 @@ pub struct ExecutionResult {
 }
 
 /// ==========================
+/// Balance Check
+/// ==========================
+pub fn has_sufficient_balance(
+    env: &Env,
+    user: &Address,
+    _asset: &u32,
+    amount: i128,
+) -> bool {
+    let key = (user.clone(), "balance");
+    let balance: i128 = env.storage().temporary().get(&key).unwrap_or(0);
+    balance >= amount
+}
+
+/// ==========================
 /// Market Order
 /// ==========================
-
 pub fn execute_market_order(
     env: &Env,
     _user: &Address,
@@ -51,7 +64,6 @@ pub fn execute_market_order(
 /// ==========================
 /// Limit Order
 /// ==========================
-
 pub fn execute_limit_order(
     env: &Env,
     _user: &Address,
@@ -84,9 +96,8 @@ pub fn execute_limit_order(
 }
 
 /// ==========================
-/// Tests
+/// Test helpers
 /// ==========================
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +117,9 @@ mod tests {
                 sequence_number: 1,
                 network_id: [0; 32],
                 base_reserve: 10,
+                max_entry_ttl: 1000,
+                min_persistent_entry_ttl: 100,
+                min_temp_entry_ttl: 100,
             });
         });
 
@@ -132,7 +146,6 @@ mod tests {
                 .set(&("liquidity", 1u64), &500);
 
             let signal = setup_signal(&env, 1);
-
             let res = execute_market_order(&env, &user, &signal, 400).unwrap();
             assert_eq!(res.executed_amount, 400);
         });
@@ -149,7 +162,6 @@ mod tests {
                 .set(&("liquidity", 2u64), &100);
 
             let signal = setup_signal(&env, 2);
-
             let res = execute_market_order(&env, &user, &signal, 300).unwrap();
             assert_eq!(res.executed_amount, 100);
         });
@@ -166,7 +178,6 @@ mod tests {
                 .set(&("market_price", 3u64), &150);
 
             let signal = setup_signal(&env, 3);
-
             let res = execute_limit_order(&env, &user, &signal, 200).unwrap();
             assert_eq!(res.executed_amount, 0);
         });
