@@ -8,6 +8,7 @@ mod events;
 mod expiry;
 #[allow(dead_code)]
 mod fees;
+mod leaderboard;
 mod performance;
 mod stake;
 mod submission;
@@ -19,6 +20,7 @@ use admin::{
 };
 use errors::AdminError;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, Map, String, Vec};
+pub use leaderboard::{get_leaderboard, LeaderboardMetric, ProviderLeaderboard};
 use types::{
     Asset, FeeBreakdown, ProviderPerformance, Signal, SignalAction, SignalPerformanceView,
     SignalStatus, TradeExecution,
@@ -396,6 +398,24 @@ impl SignalRegistry {
     /// Get provider performance stats (alias for get_provider_stats)
     pub fn get_provider_performance(env: Env, provider: Address) -> Option<ProviderPerformance> {
         Self::get_provider_stats(env, provider)
+    }
+
+    /// Get leaderboard of top providers by metric
+    ///
+    /// # Arguments
+    /// * `metric` - SuccessRate, Volume, or Followers (empty for MVP)
+    /// * `limit` - Max providers to return (0 = default 10, max 50)
+    ///
+    /// # Minimum qualification
+    /// - >= 5 signals with terminal status
+    /// - success_rate > 0 (exclude all-failed)
+    pub fn get_leaderboard(
+        env: Env,
+        metric: LeaderboardMetric,
+        limit: u32,
+    ) -> Vec<ProviderLeaderboard> {
+        let stats_map = Self::get_provider_stats_map(&env);
+        get_leaderboard(&env, &stats_map, metric, limit)
     }
 
     /// Get top providers sorted by success rate

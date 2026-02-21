@@ -5,6 +5,8 @@ extern crate std;
 use super::*;
 use soroban_sdk::{testutils::Address as _, Env};
 
+use crate::leaderboard::LeaderboardMetric;
+
 /* ===================================
    PERFORMANCE TRACKING TESTS
 =================================== */
@@ -665,4 +667,243 @@ fn test_signal_not_found_error() {
     // Try to record trade for non-existent signal
     let result = client.try_record_trade_execution(&executor, &999, &100_000, &105_000, &1000);
     assert!(result.is_err());
+}
+
+/* ===================================
+   LEADERBOARD TESTS
+=================================== */
+
+/// Helper: create signal and drive to terminal state (success or fail)
+fn create_and_settle_signal(
+    client: &SignalRegistryClient,
+    env: &Env,
+    provider: &Address,
+    executor: &Address,
+    success: bool,
+) -> u64 {
+    let expiry = env.ledger().timestamp() + 3600;
+    let sig = client.create_signal(
+        provider,
+        &String::from_str(env, "XLM/USDC"),
+        &SignalAction::Buy,
+        &100_000,
+        &String::from_str(env, "Test"),
+        &expiry,
+    );
+    let exit = if success { 105_000 } else { 90_000 };
+    client.record_trade_execution(executor, &sig, &100_000, &exit, &1000);
+    sig
+}
+
+#[test]
+fn test_leaderboard_success_rate_ranking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let executor = Address::generate(&env);
+
+    // Create 6 qualified providers (each needs >= 5 signals, success_rate > 0)
+    // Provider A: 100% (5/5 success)
+    let provider_a = Address::generate(&env);
+    for _ in 0..5 {
+        create_and_settle_signal(&client, &env, &provider_a, &executor, true);
+    }
+
+    // Provider B: 80% (4/5 success)
+    let provider_b = Address::generate(&env);
+    for i in 0..5 {
+        create_and_settle_signal(&client, &env, &provider_b, &executor, i < 4);
+    }
+
+    // Provider C: 60% (3/5 success)
+    let provider_c = Address::generate(&env);
+    for i in 0..5 {
+        create_and_settle_signal(&client, &env, &provider_c, &executor, i < 3);
+    }
+
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &5);
+    assert_eq!(board.len(), 3); // Only 3 qualified
+
+    let first = board.get(0).unwrap();
+    assert_eq!(first.provider, provider_a);
+    assert_eq!(first.rank, 1);
+    assert_eq!(first.success_rate, 10000); // 100%
+
+    let second = board.get(1).unwrap();
+    assert_eq!(second.provider, provider_b);
+    assert_eq!(second.rank, 2);
+    assert_eq!(second.success_rate, 8000); // 80%
+
+    let third = board.get(2).unwrap();
+    assert_eq!(third.provider, provider_c);
+    assert_eq!(third.rank, 3);
+    assert_eq!(third.success_rate, 6000); // 60%
+}
+
+#[test]
+fn test_leaderboard_volume_ranking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let executor = Address::generate(&env);
+
+    // Two providers with 5 signals each, different volumes (1000 vs 5000 per trade)
+    let provider_high = Address::generate(&env);
+    for _ in 0..5 {
+        let expiry = env.ledger().timestamp() + 3600;
+        let sig = client.create_signal(
+            &provider_high,
+            &String::from_str(&env, "XLM/USDC"),
+            &SignalAction::Buy,
+            &100_000,
+            &String::from_str(&env, "Test"),
+            &expiry,
+        );
+        client.record_trade_execution(&executor, &sig, &100_000, &105_000, &5000);
+    }
+
+    let provider_low = Address::generate(&env);
+    for _ in 0..5 {
+        let expiry = env.ledger().timestamp() + 3600;
+        let sig = client.create_signal(
+            &provider_low,
+            &String::from_str(&env, "XLM/USDC"),
+            &SignalAction::Buy,
+            &100_000,
+            &String::from_str(&env, "Test"),
+            &expiry,
+        );
+        client.record_trade_execution(&executor, &sig, &100_000, &105_000, &1000);
+    }
+
+    let board = client.get_leaderboard(&LeaderboardMetric::Volume, &10);
+    assert_eq!(board.len(), 2);
+    let first = board.get(0).unwrap();
+    assert_eq!(first.provider, provider_high);
+    assert_eq!(first.total_volume, 25_000); // 5 * 5000
+}
+
+#[test]
+fn test_leaderboard_min_qualification() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let executor = Address::generate(&env);
+
+    // Provider with only 3 signals - should NOT appear
+    let provider_few = Address::generate(&env);
+    for _ in 0..3 {
+        create_and_settle_signal(&client, &env, &provider_few, &executor, true);
+    }
+
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &10);
+    assert_eq!(board.len(), 0);
+
+    // Provider with 5 signals but 0% success (all failed) - should NOT appear
+    let provider_failed = Address::generate(&env);
+    for _ in 0..5 {
+        create_and_settle_signal(&client, &env, &provider_failed, &executor, false);
+    }
+
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &10);
+    assert_eq!(board.len(), 0);
+}
+
+#[test]
+fn test_leaderboard_followers_empty() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let board = client.get_leaderboard(&LeaderboardMetric::Followers, &10);
+    assert_eq!(board.len(), 0); // MVP returns empty
+}
+
+#[test]
+fn test_leaderboard_tie_breaking_and_rerank() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let executor = Address::generate(&env);
+
+    // Two providers with same success rate (100%) - tie-break by total_signals (more signals wins)
+    let provider_a = Address::generate(&env);
+    for _ in 0..6 {
+        create_and_settle_signal(&client, &env, &provider_a, &executor, true);
+    }
+
+    let provider_b = Address::generate(&env);
+    for _ in 0..5 {
+        create_and_settle_signal(&client, &env, &provider_b, &executor, true);
+    }
+
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &10);
+    assert_eq!(board.len(), 2);
+    let first = board.get(0).unwrap();
+    let second = board.get(1).unwrap();
+    assert_eq!(first.provider, provider_a); // 6 signals wins tie-break over 5
+    assert_eq!(second.provider, provider_b);
+    assert_eq!(first.rank, 1);
+    assert_eq!(second.rank, 2); // Different success metrics = different ranks
+}
+
+#[test]
+fn test_leaderboard_limit_clamping() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let executor = Address::generate(&env);
+    let provider = Address::generate(&env);
+    for _ in 0..6 {
+        create_and_settle_signal(&client, &env, &provider, &executor, true);
+    }
+
+    // Limit 0 should use default 10
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &0);
+    assert!(board.len() <= 10);
+
+    // Fewer than limit qualified - return all available
+    let board = client.get_leaderboard(&LeaderboardMetric::SuccessRate, &50);
+    assert_eq!(board.len(), 1);
 }
