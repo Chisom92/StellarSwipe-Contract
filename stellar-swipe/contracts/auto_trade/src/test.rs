@@ -443,6 +443,105 @@ fn test_stop_loss_check() {
 }
 
 #[test]
+fn test_get_trade_history_paginated() {
+    let env = setup_env();
+    let contract_id = env.register(AutoTradeContract, ());
+    let user = Address::generate(&env);
+    let signal_id = 1;
+    let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
+
+    // Setup (max_position_pct: 100 so multiple buys in same asset pass risk checks)
+    env.as_contract(&contract_id, || {
+        storage::set_signal(&env, signal_id, &signal);
+        storage::authorize_user(&env, &user);
+        risk::set_risk_config(
+            &env,
+            &user,
+            &risk::RiskConfig {
+                max_position_pct: 100,
+                daily_trade_limit: 10,
+                stop_loss_pct: 15,
+            },
+        );
+        env.storage()
+            .temporary()
+            .set(&(user.clone(), symbol_short!("balance")), &5000i128);
+        env.storage()
+            .temporary()
+            .set(&(symbol_short!("liquidity"), signal_id), &5000i128);
+    });
+
+    // Execute 5 trades in separate frames (avoids "frame is already authorized")
+    for _ in 0..5 {
+        env.as_contract(&contract_id, || {
+            let _ = AutoTradeContract::execute_trade(
+                env.clone(),
+                user.clone(),
+                signal_id,
+                OrderType::Market,
+                100,
+            )
+            .unwrap();
+        });
+    }
+
+    // Query history (no auth required)
+    env.as_contract(&contract_id, || {
+        let history = AutoTradeContract::get_trade_history(env.clone(), user.clone(), 0, 10);
+        assert_eq!(history.len(), 5);
+
+        let page2 = AutoTradeContract::get_trade_history(env.clone(), user.clone(), 2, 2);
+        assert_eq!(page2.len(), 2);
+    });
+}
+
+#[test]
+fn test_get_trade_history_empty() {
+    let env = setup_env();
+    let contract_id = env.register(AutoTradeContract, ());
+    let user = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        let history = AutoTradeContract::get_trade_history(env.clone(), user.clone(), 0, 20);
+        assert_eq!(history.len(), 0);
+    });
+}
+
+#[test]
+fn test_get_portfolio() {
+    let env = setup_env();
+    let contract_id = env.register(AutoTradeContract, ());
+    let user = Address::generate(&env);
+    let signal_id = 1;
+    let signal = setup_signal(&env, signal_id, env.ledger().timestamp() + 1000);
+
+    env.as_contract(&contract_id, || {
+        storage::set_signal(&env, signal_id, &signal);
+        storage::authorize_user(&env, &user);
+        env.storage()
+            .temporary()
+            .set(&(user.clone(), symbol_short!("balance")), &1000i128);
+        env.storage()
+            .temporary()
+            .set(&(symbol_short!("liquidity"), signal_id), &500i128);
+
+        let _ = AutoTradeContract::execute_trade(
+            env.clone(),
+            user.clone(),
+            signal_id,
+            OrderType::Market,
+            400,
+        )
+        .unwrap();
+
+        let portfolio = AutoTradeContract::get_portfolio(env.clone(), user.clone());
+        assert_eq!(portfolio.assets.len(), 1);
+        assert_eq!(portfolio.assets.get(0).unwrap().amount, 400);
+        assert_eq!(portfolio.assets.get(0).unwrap().asset_id, 1);
+    });
+}
+
+#[test]
 fn test_portfolio_value_calculation() {
     let env = setup_env();
     let contract_id = env.register(AutoTradeContract, ());

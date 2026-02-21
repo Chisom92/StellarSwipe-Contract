@@ -3,7 +3,9 @@
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
 mod errors;
+mod history;
 mod multi_asset;
+mod portfolio;
 mod risk;
 mod sdex;
 mod storage;
@@ -172,6 +174,26 @@ impl AutoTradeContract {
             .persistent()
             .set(&DataKey::Trades(user.clone(), signal_id), &trade);
 
+        if execution.executed_amount > 0 {
+            let hist_status = match status {
+                TradeStatus::Filled | TradeStatus::PartiallyFilled => {
+                    history::HistoryTradeStatus::Executed
+                }
+                TradeStatus::Failed => history::HistoryTradeStatus::Failed,
+                TradeStatus::Pending => history::HistoryTradeStatus::Pending,
+            };
+            history::record_trade(
+                &env,
+                &user,
+                signal_id,
+                signal.base_asset,
+                execution.executed_amount,
+                execution.executed_price,
+                0,
+                hist_status,
+            );
+        }
+
         #[allow(deprecated)]
         env.events().publish(
             (Symbol::new(&env, "trade_executed"), user.clone(), signal_id),
@@ -223,9 +245,27 @@ impl AutoTradeContract {
         risk::get_user_positions(&env, &user)
     }
 
-    /// Get user's trade history
-    pub fn get_trade_history(env: Env, user: Address) -> soroban_sdk::Vec<risk::TradeRecord> {
+    /// Get user's trade history (risk module, legacy)
+    pub fn get_trade_history_legacy(
+        env: Env,
+        user: Address,
+    ) -> soroban_sdk::Vec<risk::TradeRecord> {
         risk::get_trade_history(&env, &user)
+    }
+
+    /// Get paginated trade history (newest first)
+    pub fn get_trade_history(
+        env: Env,
+        user: Address,
+        offset: u32,
+        limit: u32,
+    ) -> soroban_sdk::Vec<history::HistoryTrade> {
+        history::get_trade_history(&env, &user, offset, limit)
+    }
+
+    /// Get user portfolio with holdings and P&L
+    pub fn get_portfolio(env: Env, user: Address) -> portfolio::Portfolio {
+        portfolio::get_portfolio(&env, &user)
     }
 }
 
