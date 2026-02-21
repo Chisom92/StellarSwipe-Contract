@@ -14,7 +14,7 @@ pub enum AdminError {
     InvalidRiskParameter = 8,
     InsufficientSignatures = 9,
     DuplicateSigner = 10,
-    CannotFollowSelf = 11,
+    InvalidAssetPair = 11,
 }
 
 #[contracterror]
