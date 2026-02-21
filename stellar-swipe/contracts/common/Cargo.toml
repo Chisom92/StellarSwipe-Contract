@@ -1,17 +1,14 @@
 [package]
-name = "signal_registry"
+name = "stellar_swipe_common"
 version = "0.0.0"
 edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["lib", "cdylib"]
-doctest = false
+crate-type = ["lib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
-stellar_swipe_common = { path = "../common" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-

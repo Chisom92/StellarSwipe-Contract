@@ -20,7 +20,8 @@ use admin::{
 };
 use errors::AdminError;
 pub use leaderboard::{get_leaderboard, LeaderboardMetric, ProviderLeaderboard};
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Vec};
+use stellar_swipe_common::{validate_asset_pair as validate_asset_pair_common, AssetPairError};
 use types::{
     Asset, FeeBreakdown, ProviderPerformance, Signal, SignalAction, SignalPerformanceView,
     SignalStatus, TradeExecution,
@@ -186,20 +187,13 @@ impl SignalRegistry {
             .set(&StorageKey::ProviderStats, map);
     }
 
-    fn validate_asset_pair(_env: &Env, asset_pair: &String) {
-        let bytes: Bytes = asset_pair.clone().to_bytes();
-
-        let mut has_slash = false;
-        for i in 0..bytes.len() {
-            if bytes.get(i).unwrap() == b'/' {
-                has_slash = true;
-                break;
-            }
-        }
-
-        if !has_slash {
-            panic!("invalid asset pair");
-        }
+    fn validate_asset_pair(env: &Env, asset_pair: &String) -> Result<(), AdminError> {
+        validate_asset_pair_common(env, asset_pair).map_err(|e| match e {
+            AssetPairError::InvalidFormat
+            | AssetPairError::InvalidAssetCode
+            | AssetPairError::InvalidIssuer
+            | AssetPairError::SameAssets => AdminError::InvalidAssetPair,
+        })
     }
 
     /* =========================
@@ -220,7 +214,7 @@ impl SignalRegistry {
 
         provider.require_auth();
 
-        Self::validate_asset_pair(&env, &asset_pair);
+        Self::validate_asset_pair(&env, &asset_pair)?;
 
         let now = env.ledger().timestamp();
 

@@ -68,6 +68,82 @@ fn create_and_read_signal() {
 }
 
 #[test]
+fn test_invalid_asset_pair_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let provider = Address::generate(&env);
+    let expiry = env.ledger().timestamp() + 60;
+
+    let result = client.try_create_signal(
+        &provider,
+        &String::from_str(&env, "XLMUSDC"),
+        &SignalAction::Buy,
+        &100_000,
+        &String::from_str(&env, "Test"),
+        &expiry,
+    );
+    assert!(result.is_err());
+
+    let result = client.try_create_signal(
+        &provider,
+        &String::from_str(&env, "XLM/XLM"),
+        &SignalAction::Buy,
+        &100_000,
+        &String::from_str(&env, "Test"),
+        &expiry,
+    );
+    assert!(result.is_err());
+
+    let result = client.try_create_signal(
+        &provider,
+        &String::from_str(&env, "XLM/USDC:INVALID"),
+        &SignalAction::Buy,
+        &100_000,
+        &String::from_str(&env, "Test"),
+        &expiry,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_custom_asset_pair_with_issuer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    #[allow(deprecated)]
+    let contract_id = env.register_contract(None, SignalRegistry);
+    let client = SignalRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let provider = Address::generate(&env);
+    let expiry = env.ledger().timestamp() + 60;
+
+    let signal_id = client.create_signal(
+        &provider,
+        &String::from_str(
+            &env,
+            "XLM/USDC:GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX",
+        ),
+        &SignalAction::Buy,
+        &100_000,
+        &String::from_str(&env, "Full format"),
+        &expiry,
+    );
+
+    assert!(signal_id > 0);
+}
+
+#[test]
 fn test_pause_blocks_signals() {
     let env = Env::default();
     env.mock_all_auths();

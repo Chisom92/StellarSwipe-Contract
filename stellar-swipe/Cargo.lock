@@ -1202,6 +1202,7 @@ name = "signal_registry"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
+ "stellar_swipe_common",
 ]
 
 [[package]]
@@ -1460,6 +1461,13 @@ dependencies = [
  "serde_with",
  "sha2",
  "stellar-strkey",
+]
+
+[[package]]
+name = "stellar_swipe_common"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

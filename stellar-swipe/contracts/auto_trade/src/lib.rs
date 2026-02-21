@@ -3,6 +3,7 @@
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
 mod errors;
+mod multi_asset;
 mod risk;
 mod sdex;
 mod storage;
