@@ -33,7 +33,7 @@ pub enum SignalStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SignalAction {
     Buy,
     Sell,
