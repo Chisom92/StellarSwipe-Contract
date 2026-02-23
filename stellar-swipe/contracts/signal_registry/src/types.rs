@@ -1,4 +1,5 @@
-use soroban_sdk::{contracttype, Address, String, Symbol};
+use soroban_sdk::{contracttype, Address, String, Symbol, Vec};
+use crate::categories::{RiskLevel, SignalCategory};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +57,10 @@ pub struct Signal {
     pub successful_executions: u32, // Number of successful trade executions
     pub total_volume: i128, // Cumulative volume across all executions
     pub total_roi: i128,    // Cumulative ROI in basis points (10000 = 100%)
+    // Categorization fields
+    pub category: SignalCategory,
+    pub tags: Vec<String>,  // Max 10 tags
+    pub risk_level: RiskLevel,
 }
 
 #[contracttype]
