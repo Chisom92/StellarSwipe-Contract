@@ -560,6 +560,31 @@ mod tests {
         Ok(())
     }
 
+    pub fn refresh_from_sdex(env: Env, pair: AssetPair) -> Result<i128, OracleError> {
+        // 1. In a real Soroban scenario, you would interface with the 
+        // Liquidity Pool or a specialized SDEX oracle contract.
+        // For this issue, we assume we fetch the orderbook.
+        let orderbook = fetch_sdex_orderbook(&env, &pair)?;
+
+        // 2. Calculate price
+        let price = calculate_spot_price(&env, orderbook)?;
+
+        // 3. Store in the PriceMap (from Issue #32)
+        let source_address = env.current_contract_address();
+        Self::submit_internal(&env, source_address, pair, price, 100)?;
+
+        Ok(price)
+    }
+
+// Internal helper to represent the SDEX query
+fn fetch_sdex_orderbook(env: &Env, pair: &AssetPair) -> Result<OrderBook, OracleError> {
+    // Note: Actual Soroban host functions for SDEX are currently limited 
+    // to Liquidity Pool swaps. For Order Books, one typically uses 
+    // a Cross-Chain/Bridge approach or a Trusted Observer.
+    // Here we implement the interface logic.
+    unimplemented!("SDEX Orderbook Host Interface");
+}
+
 #[cfg(test)]
 mod test;
  main
