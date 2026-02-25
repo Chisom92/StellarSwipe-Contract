@@ -1,12 +1,8 @@
 #![no_std]
 
- feature/signal-categorization-tagging
- feature/signal-categorization-tagging
-=======
- feature/oracle-price-conversion
- main
 mod conversion;
 mod errors;
+mod history;
 mod storage;
 
 use soroban_sdk::{contract, contractimpl, Address, Env};
@@ -15,24 +11,7 @@ use errors::OracleError;
 
 pub use conversion::{convert_to_base, ConversionPath};
 pub use storage::{get_base_currency, set_base_currency, get_price, set_price};
-=======
-mod errors;
-mod events;
-mod reputation;
-mod types;
-
-use errors::OracleError;
-use reputation::{
-    adjust_oracle_weight, calculate_reputation, get_oracle_stats, should_remove_oracle,
-    slash_oracle, track_oracle_accuracy, SlashReason,
-};
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
- feature/signal-categorization-tagging
-use types::{ConsensusPriceData, OracleReputation, PriceSubmission, StorageKey};
- main
-=======
-use types::{ConsensusPriceData, OracleReputation, PriceSubmission, StorageKey}; main
- main
+pub use history::{store_price, get_historical_price, calculate_twap, get_twap_deviation};
 
 #[contract]
 pub struct OracleContract;
@@ -55,7 +34,8 @@ impl OracleContract {
             return Err(OracleError::InvalidAsset);
         }
         storage::set_price(&env, &pair, price);
-        storage::add_available_pair(&env, pair);
+        storage::add_available_pair(&env, pair.clone());
+        history::store_price(&env, &pair, price);
         Ok(())
     }
 
@@ -103,6 +83,31 @@ impl OracleContract {
     /// Add available trading pair
     pub fn add_pair(env: Env, pair: AssetPair) {
         storage::add_available_pair(&env, pair);
+    }
+
+    /// Get historical price at timestamp
+    pub fn get_historical_price(env: Env, pair: AssetPair, timestamp: u64) -> Option<i128> {
+        history::get_historical_price(&env, &pair, timestamp)
+    }
+
+    /// Calculate TWAP for 1 hour
+    pub fn get_twap_1h(env: Env, pair: AssetPair) -> Result<i128, OracleError> {
+        history::calculate_twap(&env, &pair, 3600)
+    }
+
+    /// Calculate TWAP for 24 hours
+    pub fn get_twap_24h(env: Env, pair: AssetPair) -> Result<i128, OracleError> {
+        history::calculate_twap(&env, &pair, 86400)
+    }
+
+    /// Calculate TWAP for 7 days
+    pub fn get_twap_7d(env: Env, pair: AssetPair) -> Result<i128, OracleError> {
+        history::calculate_twap(&env, &pair, 604800)
+    }
+
+    /// Get price deviation from TWAP
+    pub fn get_price_deviation(env: Env, pair: AssetPair, current_price: i128, window: u64) -> Result<i128, OracleError> {
+        history::get_twap_deviation(&env, &pair, current_price, window)
     }
 }
 
@@ -213,6 +218,65 @@ mod tests {
 
         client.set_base_currency(&usdc);
         assert_eq!(client.get_base_currency().code, String::from_str(&env, "USDC"));
+    }
+
+    #[test]
+    fn test_twap_1h() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 1000);
+        let contract_id = env.register_contract(None, OracleContract);
+        let client = OracleContractClient::new(&env, &contract_id);
+
+        let pair = AssetPair {
+            base: usdc(&env),
+            quote: xlm(&env),
+        };
+
+        client.set_price(&pair, &10_000_000);
+        env.ledger().with_mut(|li| li.timestamp = 1300);
+        client.set_price(&pair, &11_000_000);
+        env.ledger().with_mut(|li| li.timestamp = 1600);
+        client.set_price(&pair, &12_000_000);
+
+        let twap = client.get_twap_1h(&pair).unwrap();
+        assert_eq!(twap, 11_000_000);
+    }
+
+    #[test]
+    fn test_historical_price_query() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 1000);
+        let contract_id = env.register_contract(None, OracleContract);
+        let client = OracleContractClient::new(&env, &contract_id);
+
+        let pair = AssetPair {
+            base: usdc(&env),
+            quote: xlm(&env),
+        };
+
+        client.set_price(&pair, &10_000_000);
+        let historical = client.get_historical_price(&pair, &1000);
+        assert_eq!(historical, Some(10_000_000));
+    }
+
+    #[test]
+    fn test_price_deviation() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 1000);
+        let contract_id = env.register_contract(None, OracleContract);
+        let client = OracleContractClient::new(&env, &contract_id);
+
+        let pair = AssetPair {
+            base: usdc(&env),
+            quote: xlm(&env),
+        };
+
+        client.set_price(&pair, &10_000_000);
+        env.ledger().with_mut(|li| li.timestamp = 1300);
+        client.set_price(&pair, &10_000_000);
+
+        let deviation = client.get_price_deviation(&pair, &11_000_000, &600).unwrap();
+        assert_eq!(deviation, 1000); // 10%
     }
 }
 =======
