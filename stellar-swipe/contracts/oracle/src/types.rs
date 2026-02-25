@@ -1,7 +1,7 @@
 use soroban_sdk::{contracttype, Address, Vec, Env, crypto::Ed25519Signature};
 use common::{AssetPair};
 use crate::errors::OracleError;
-use crate::types::{ExternalPrice, OracleReputation};
+    
 
 #[contracttype]
 #[derive(Clone, Debug)]

@@ -3,11 +3,21 @@
 mod conversion;
 mod errors;
 mod history;
+mod types;
+mod multi_hop;
 mod storage;
+mod sdex;
+mod staleness;
+mod reputation;
+mod events;
+mod external_adapter;
 
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, symbol_short, vec};
 use common::{Asset, AssetPair};
 use errors::OracleError;
+use types::{StorageKey, OracleReputation, PriceSubmission, ConsensusPriceData, ExternalPrice};
+
+pub use multi_hop::{LiquidityPath, find_optimal_path, calculate_multi_hop_price};
 
 pub use conversion::{convert_to_base, ConversionPath};
 pub use storage::{get_base_currency, set_base_currency, get_price, set_price};
@@ -18,11 +28,6 @@ pub struct OracleContract;
 
 #[contractimpl]
 impl OracleContract {
- feature/signal-categorization-tagging
- feature/signal-categorization-tagging
-=======
- feature/oracle-price-conversion
- main
     /// Initialize oracle with base currency
     pub fn initialize(env: Env, admin: Address, base_currency: Asset) {
         storage::set_base_currency(&env, base_currency);
@@ -108,6 +113,16 @@ impl OracleContract {
     /// Get price deviation from TWAP
     pub fn get_price_deviation(env: Env, pair: AssetPair, current_price: i128, window: u64) -> Result<i128, OracleError> {
         history::get_twap_deviation(&env, &pair, current_price, window)
+    }
+
+    /// Find optimal path between assets
+    pub fn find_optimal_path(env: Env, from: Asset, to: Asset, amount: i128) -> Result<LiquidityPath, OracleError> {
+        multi_hop::find_optimal_path(&env, from, to, amount)
+    }
+
+    /// Calculate price via multi-hop path
+    pub fn calculate_multi_hop_price(env: Env, path: LiquidityPath, amount: i128) -> i128 {
+        multi_hop::calculate_multi_hop_price(&env, path, amount)
     }
 }
 
@@ -275,19 +290,11 @@ mod tests {
         env.ledger().with_mut(|li| li.timestamp = 1300);
         client.set_price(&pair, &10_000_000);
 
-        let deviation = client.get_price_deviation(&pair, &11_000_000, &600).unwrap();
         assert_eq!(deviation, 1000); // 10%
     }
 }
-=======
-    /// Initialize the contract with an admin
-    pub fn initialize(env: Env, admin: Address) {
-        if env.storage().instance().has(&StorageKey::Admin) {
-            panic!("already initialized");
-        }
-        env.storage().instance().set(&StorageKey::Admin, &admin);
-    }
 
+impl OracleContract {
     /// Register a new oracle
     pub fn register_oracle(env: Env, admin: Address, oracle: Address) -> Result<(), OracleError> {
         admin.require_auth();
@@ -692,4 +699,3 @@ pub fn on_price_update(env: &Env, pair: AssetPair) {
 
 #[cfg(test)]
 mod test;
- main
