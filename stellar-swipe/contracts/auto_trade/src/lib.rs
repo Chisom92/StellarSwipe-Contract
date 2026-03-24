@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, String, Vec};
 
 mod auth;
 mod errors;
@@ -8,12 +8,14 @@ mod history;
 mod multi_asset;
 mod portfolio;
 mod risk;
+mod risk_parity;
 mod sdex;
 mod storage;
 mod strategies;
 
 use crate::storage::DataKey;
 use errors::AutoTradeError;
+use risk_parity::{AssetRisk, RebalanceTrade};
 
 /// ==========================
 /// Types
@@ -268,6 +270,52 @@ impl AutoTradeContract {
     /// Get user portfolio with holdings and P&L
     pub fn get_portfolio(env: Env, user: Address) -> portfolio::Portfolio {
         portfolio::get_portfolio(&env, &user)
+    }
+
+    /// Set risk parity configuration
+    pub fn set_risk_parity_config(
+        env: Env,
+        user: Address,
+        enabled: bool,
+        rebalance_frequency_days: u32,
+        threshold_pct: u32,
+    ) -> Result<(), AutoTradeError> {
+        if !cfg!(test) {
+            user.require_auth();
+        }
+        let mut config = risk::get_risk_parity_config(&env, &user);
+        config.enabled = enabled;
+        config.rebalance_frequency_days = rebalance_frequency_days;
+        config.threshold_pct = threshold_pct;
+        risk::set_risk_parity_config(&env, &user, &config);
+        Ok(())
+    }
+
+    /// Get risk parity configuration
+    pub fn get_risk_parity_config(env: Env, user: Address) -> risk::RiskParityConfig {
+        risk::get_risk_parity_config(&env, &user)
+    }
+
+    /// Preview a risk parity rebalance
+    pub fn preview_risk_parity_rebalance(
+        env: Env,
+        user: Address,
+    ) -> Result<(Vec<AssetRisk>, Vec<RebalanceTrade>), AutoTradeError> {
+        risk_parity::calculate_risk_parity_rebalance(&env, &user)
+    }
+
+    /// Manually trigger a risk parity rebalance
+    pub fn trigger_risk_parity_rebalance(env: Env, user: Address) -> Result<(), AutoTradeError> {
+        if !cfg!(test) {
+            user.require_auth();
+        }
+        risk_parity::execute_risk_parity_rebalance(&env, &user)
+    }
+
+    /// Record a price for volatility tracking (usually called by oracle)
+    pub fn record_asset_price(env: Env, asset_id: u32, price: i128) {
+        risk::record_price(&env, asset_id, price);
+        risk::set_asset_price(&env, asset_id, price);
     }
 
     /// Grant authorization to execute trades
