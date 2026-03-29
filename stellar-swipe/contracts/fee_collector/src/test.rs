@@ -1,8 +1,8 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Env as _};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
+use soroban_sdk::{token, Address, Env, IntoVal};
 
 fn create_test_env() -> Env {
     let env = Env::default();
@@ -97,24 +97,32 @@ fn test_claim_fees_normal() {
     let client = FeeCollectorContractClient::new(&env, &contract_id);
 
     let provider = Address::generate(&env);
-    let token = Address::generate(&env);
-    let amount = 1_000_000; // 0.1 XLM
+    let amount: i128 = 1_000_000; // 0.1 XLM
 
-    // Simulate adding pending fees by setting storage directly
-    let key = StorageKey::ProviderPendingFees(provider.clone(), token.clone());
+    // Register a real token contract and mint `amount` to the fee_collector contract
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+    token_admin_client.mint(&contract_id, &amount);
+
+    // Seed pending fees in storage
+    let key = StorageKey::ProviderPendingFees(provider.clone(), token_id.clone());
     env.as_contract(&contract_id, || {
         env.storage().persistent().set(&key, &amount);
     });
 
-    // Claim fees
-    let claimed = client.claim_fees(&provider, &token);
+    let claimed = client.claim_fees(&provider, &token_id);
     assert_eq!(claimed, amount);
 
-    // Check that storage is reset
-    let remaining = env.as_contract(&contract_id, || {
+    // Pending balance must be reset
+    let remaining: i128 = env.as_contract(&contract_id, || {
         env.storage().persistent().get(&key).unwrap_or(0)
     });
     assert_eq!(remaining, 0);
+
+    // Provider must have received the tokens
+    let token_client = token::Client::new(&env, &token_id);
+    assert_eq!(token_client.balance(&provider), amount);
 }
 
 #[test]
@@ -133,22 +141,27 @@ fn test_claim_fees_zero_balance() {
 
 #[test]
 fn test_claim_fees_unauthorized() {
-    let env = Env::default(); // No mock_all_auths
+    let env = Env::default(); // No mock_all_auths — auth is enforced
     let contract_id = env.register_contract(None, FeeCollectorContract);
     let admin = Address::generate(&env);
 
+    // initialize requires admin auth; mock only that call
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "initialize",
+            args: (admin.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
     let client = FeeCollectorContractClient::new(&env, &contract_id);
     client.initialize(&admin);
 
     let provider = Address::generate(&env);
     let token = Address::generate(&env);
-    let unauthorized_caller = Address::generate(&env);
 
-    // Try to claim with different caller - should fail auth
-    let result = env.try_invoke_contract(
-        &contract_id,
-        &soroban_sdk::symbol_short!("claim_fees"),
-        (&unauthorized_caller, &token).into_val(&env),
-    );
-    assert!(result.is_err()); // Should fail due to auth
+    // Attempt to claim as `provider` without providing auth — must fail
+    let result = client.try_claim_fees(&provider, &token);
+    assert!(result.is_err());
 }
