@@ -38,6 +38,9 @@ pub enum StorageKey {
 /// Symbol invoked on the portfolio after a successful limit check (test / integration hook).
 pub const RECORD_COPY_POSITION_FN: &str = "record_copy_position";
 
+/// Temporary-storage key for the reentrancy lock on `execute_copy_trade`.
+const EXECUTION_LOCK: &str = "ExecLock";
+
  feature/copy-trade-balance-check
 #[contract]
 pub struct TradeExecutorContract;
@@ -190,6 +193,12 @@ feature/copy-trade-balance-check
         user.require_auth();
 
 main
+        let lock_key = Symbol::new(&env, EXECUTION_LOCK);
+        if env.storage().temporary().get::<_, bool>(&lock_key).unwrap_or(false) {
+            return Err(ContractError::ReentrancyDetected);
+        }
+        env.storage().temporary().set(&lock_key, &true);
+
         let portfolio: Address = env
             .storage()
             .instance()
@@ -223,6 +232,7 @@ main
         args.push_back(user.into_val(&env));
         env.invoke_contract::<()>(&portfolio, &sym, args);
 
+        env.storage().temporary().remove(&Symbol::new(&env, EXECUTION_LOCK));
         Ok(())
 feature/copy-trade-balance-check
 

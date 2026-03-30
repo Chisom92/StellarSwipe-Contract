@@ -31,4 +31,5 @@ feature/position-limit-copy-trade
     SlippageExceeded = 3,
 main
  main
+    ReentrancyDetected = 5,
 }

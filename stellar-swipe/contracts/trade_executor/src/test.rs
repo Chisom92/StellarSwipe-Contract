@@ -461,3 +461,100 @@ fn swap_with_slippage_reverts_when_exceeded() {
 main
  main
 }
+
+// ── Reentrancy guard tests ────────────────────────────────────────────────────
+
+/// A mock portfolio that calls back into execute_copy_trade during record_copy_position,
+/// simulating a reentrant call.
+#[contract]
+pub struct ReentrantPortfolio;
+
+#[contractimpl]
+impl ReentrantPortfolio {
+    pub fn set_executor(env: Env, exec: Address) {
+        env.storage().instance().set(&soroban_sdk::symbol_short!("exec"), &exec);
+    }
+    pub fn set_user(env: Env, user: Address) {
+        env.storage().instance().set(&soroban_sdk::symbol_short!("user"), &user);
+    }
+    pub fn get_open_position_count(_env: Env, _user: Address) -> u32 {
+        0
+    }
+    pub fn record_copy_position(env: Env, user: Address) {
+        // Attempt reentrant call back into execute_copy_trade.
+        let exec: Address = env
+            .storage()
+            .instance()
+            .get(&soroban_sdk::symbol_short!("exec"))
+            .unwrap();
+        let client = TradeExecutorContractClient::new(&env, &exec);
+        // This reentrant call should return ReentrancyDetected.
+        let result = client.try_execute_copy_trade(&user);
+        // Store whether it was blocked so the test can assert.
+        let blocked = matches!(
+            result,
+            Err(Ok(ContractError::ReentrancyDetected))
+        );
+        env.storage()
+            .instance()
+            .set(&soroban_sdk::symbol_short!("blocked"), &blocked);
+    }
+    pub fn was_blocked(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&soroban_sdk::symbol_short!("blocked"))
+            .unwrap_or(false)
+    }
+}
+
+#[test]
+fn reentrant_call_returns_reentrancy_detected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+
+    let portfolio_id = env.register(ReentrantPortfolio, ());
+    let exec_id = env.register(TradeExecutorContract, ());
+
+    let exec = TradeExecutorContractClient::new(&env, &exec_id);
+    exec.initialize(&admin);
+    exec.set_user_portfolio(&portfolio_id);
+
+    // Wire the reentrant portfolio with the executor address and user.
+    ReentrantPortfolioClient::new(&env, &portfolio_id).set_executor(&exec_id);
+    ReentrantPortfolioClient::new(&env, &portfolio_id).set_user(&user);
+
+    // First call succeeds; the reentrant call inside record_copy_position is blocked.
+    exec.execute_copy_trade(&user);
+
+    assert!(
+        ReentrantPortfolioClient::new(&env, &portfolio_id).was_blocked(),
+        "reentrant call was not blocked with ReentrancyDetected"
+    );
+}
+
+#[test]
+fn lock_cleared_after_successful_execution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let portfolio_id = env.register(MockUserPortfolio, ());
+    let exec_id = env.register(TradeExecutorContract, ());
+
+    let exec = TradeExecutorContractClient::new(&env, &exec_id);
+    exec.initialize(&admin);
+    exec.set_user_portfolio(&portfolio_id);
+
+    // Two sequential calls must both succeed (lock is cleared between them).
+    exec.execute_copy_trade(&user);
+    exec.execute_copy_trade(&user);
+
+    assert_eq!(
+        MockUserPortfolioClient::new(&env, &portfolio_id).get_open_position_count(&user),
+        2
+    );
+}
