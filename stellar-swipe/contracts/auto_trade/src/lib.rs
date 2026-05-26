@@ -269,6 +269,19 @@ impl AutoTradeContract {
         portfolio::get_portfolio(&env, &user)
     }
 
+    pub fn set_portfolio_privacy(env: Env, user: Address, enabled: bool) {
+        user.require_auth();
+        portfolio::set_privacy_mode(&env, &user, enabled);
+    }
+
+    pub fn compare_portfolios(
+        env: Env,
+        user_a: Address,
+        user_b: Address,
+    ) -> Result<portfolio::PortfolioComparison, AutoTradeError> {
+        portfolio::compare_portfolios(&env, user_a, user_b)
+    }
+
     /// Grant authorization to execute trades
     pub fn grant_authorization(
         env: Env,
