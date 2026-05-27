@@ -371,6 +371,64 @@ impl UserPortfolio {
             },
         );
 
+        // Update streaks: increment on profitable close, reset on loss/zero.
+        let current_key = DataKey::CurrentStreak(user.clone());
+        let best_key = DataKey::BestStreak(user.clone());
+
+        let mut current: u32 = env
+            .storage()
+            .persistent()
+            .get(&current_key)
+            .unwrap_or(0u32);
+        let mut best: u32 = env
+            .storage()
+            .persistent()
+            .get(&best_key)
+            .unwrap_or(0u32);
+
+        if realized_pnl > 0 {
+            // profitable close: increment streak
+            current = current.saturating_add(1);
+            if current > best {
+                best = current;
+                env.storage().persistent().set(&best_key, &best);
+            }
+            env.storage().persistent().set(&current_key, &current);
+
+            shared::events::emit_streak_updated(
+                &env,
+                shared::events::EvtStreakUpdated {
+                    schema_version: shared::events::SCHEMA_VERSION,
+                    user: user.clone(),
+                    current_streak: current,
+                    best_streak: best,
+                },
+            );
+        } else {
+            // loss or zero: if there was a streak, emit StreakBroken
+            if current > 0 {
+                shared::events::emit_streak_broken(
+                    &env,
+                    shared::events::EvtStreakBroken {
+                        schema_version: shared::events::SCHEMA_VERSION,
+                        user: user.clone(),
+                        streak_length: current,
+                    },
+                );
+            }
+            current = 0;
+            env.storage().persistent().set(&current_key, &current);
+            shared::events::emit_streak_updated(
+                &env,
+                shared::events::EvtStreakUpdated {
+                    schema_version: shared::events::SCHEMA_VERSION,
+                    user: user.clone(),
+                    current_streak: current,
+                    best_streak: best,
+                },
+            );
+        }
+
         Ok(())
     }
 
@@ -557,6 +615,106 @@ impl UserPortfolio {
             closed_ids.push_back(position_id);
             env.storage().persistent().set(&closed_key, &closed_ids);
         }
+    }
+}
+
+#[cfg(test)]
+mod streak_tests {
+    use super::*;
+    use super::oracle_ok::OracleMock;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Env, Symbol};
+
+    fn setup(env: &Env) -> (Address, Address) {
+        env.mock_all_auths();
+        let admin = Address::generate(env);
+        let oracle = env.register_contract(None, OracleMock);
+        let contract_id = env.register_contract(None, UserPortfolio);
+        let client = UserPortfolioClient::new(env, &contract_id);
+        client.initialize(&admin, &oracle);
+        (admin, contract_id)
+    }
+
+    #[test]
+    fn streak_building_and_best_preserved() {
+        let env = Env::default();
+        let (_admin, contract_id) = setup(&env);
+        let client = UserPortfolioClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+
+        // Open and close three profitable positions
+        for _ in 0..3 {
+            let id = client.open_position(&user, &100, &1_000);
+            client.close_position(&user, &id, &50, &120, &Address::generate(&env), &1);
+        }
+
+        // Check stored streaks
+        let current: u32 = env
+            .as_contract(&contract_id, || {
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::CurrentStreak(user.clone()))
+                    .unwrap_or(0u32)
+            });
+        let best: u32 = env
+            .as_contract(&contract_id, || {
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::BestStreak(user.clone()))
+                    .unwrap_or(0u32)
+            });
+
+        assert_eq!(current, 3);
+        assert_eq!(best, 3);
+    }
+
+    #[test]
+    fn streak_breaking_emits_event_and_resets() {
+        let env = Env::default();
+        let (_admin, contract_id) = setup(&env);
+        let client = UserPortfolioClient::new(&env, &contract_id);
+        let user = Address::generate(&env);
+
+        // Build streak of 2
+        for _ in 0..2 {
+            let id = client.open_position(&user, &100, &1_000);
+            client.close_position(&user, &id, &50, &120, &Address::generate(&env), &1);
+        }
+
+        // Now close with a loss
+        let id = client.open_position(&user, &100, &1_000);
+        client.close_position(&user, &id, &0, &80, &Address::generate(&env), &1);
+
+        // current should be 0, best should be 2
+        let current: u32 = env
+            .as_contract(&contract_id, || {
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::CurrentStreak(user.clone()))
+                    .unwrap_or(0u32)
+            });
+        let best: u32 = env
+            .as_contract(&contract_id, || {
+                env.storage()
+                    .persistent()
+                    .get(&DataKey::BestStreak(user.clone()))
+                    .unwrap_or(0u32)
+            });
+
+        assert_eq!(current, 0);
+        assert_eq!(best, 2);
+
+        // Check that a StreakBroken event was emitted
+        let has_broken = env.events().all().iter().any(|e| {
+            let topics: soroban_sdk::Vec<soroban_sdk::Val> = e.1.clone();
+            if topics.len() < 2 {
+                return false;
+            }
+            soroban_sdk::Symbol::try_from_val(&env, &topics.get(1).unwrap())
+                .map(|s| s == soroban_sdk::Symbol::new(&env, "streak_broken"))
+                .unwrap_or(false)
+        });
+        assert!(has_broken, "streak_broken event not emitted");
     }
 }
 

@@ -21,4 +21,8 @@ pub enum DataKey {
     KycRequiredMode,
     /// Per-user geographic restriction flag (bool). Restricted users cannot trade.
     Restricted(Address),
+    /// Per-user current streak (consecutive profitable closes)
+    CurrentStreak(Address),
+    /// Per-user best streak observed
+    BestStreak(Address),
 }

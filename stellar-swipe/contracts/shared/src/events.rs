@@ -464,6 +464,17 @@ pub struct EvtTradeExecuted {
     pub timestamp: u64,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvtInteractionLogged {
+    pub schema_version: u32,
+    pub user: Address,
+    pub function_name: String,
+    pub contract: String,
+    pub timestamp: u64,
+    pub success: bool,
+}
+
 // ── Analytics emit helpers (Issue #365) ──────────────────────────────────────
 
 pub fn emit_user_session_started(env: &Env, evt: EvtUserSessionStarted) {
@@ -501,6 +512,53 @@ pub fn emit_analytics_trade_executed(env: &Env, evt: EvtTradeExecuted) {
         (
             Symbol::new(env, "analytics"),
             Symbol::new(env, "trade_executed"),
+        ),
+        evt,
+    );
+}
+
+pub fn emit_interaction_logged(env: &Env, evt: EvtInteractionLogged) {
+    env.events().publish(
+        (
+            Symbol::new(env, "audit"),
+            Symbol::new(env, "interaction_logged"),
+        ),
+        evt,
+    );
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvtStreakUpdated {
+    pub schema_version: u32,
+    pub user: Address,
+    pub current_streak: u32,
+    pub best_streak: u32,
+}
+
+pub fn emit_streak_updated(env: &Env, evt: EvtStreakUpdated) {
+    env.events().publish(
+        (
+            Symbol::new(env, "user_portfolio"),
+            Symbol::new(env, "streak_updated"),
+        ),
+        evt,
+    );
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvtStreakBroken {
+    pub schema_version: u32,
+    pub user: Address,
+    pub streak_length: u32,
+}
+
+pub fn emit_streak_broken(env: &Env, evt: EvtStreakBroken) {
+    env.events().publish(
+        (
+            Symbol::new(env, "user_portfolio"),
+            Symbol::new(env, "streak_broken"),
         ),
         evt,
     );
