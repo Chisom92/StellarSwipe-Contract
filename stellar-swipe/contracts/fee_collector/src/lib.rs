@@ -14,7 +14,7 @@ use events::{
 mod rebates;
 
 mod reports;
-pub use reports::{EarningsReport, ReportPeriod};
+pub use reports::{EarningsLeaderboardEntry, EarningsReport, ReportPeriod};
 
 mod storage;
 use storage::{
@@ -519,6 +519,17 @@ impl FeeCollector {
         let day = env.ledger().timestamp() / SECONDS_PER_DAY;
         storage::add_provider_daily_fee_shares(&env, &provider, day, amount);
         Ok(())
+    }
+
+    /// Returns the provider earnings leaderboard ordered by all-time earnings.
+    pub fn get_provider_earnings_leaderboard(
+        env: Env,
+        limit: u32,
+    ) -> Result<Vec<EarningsLeaderboardEntry>, ContractError> {
+        if !is_initialized(&env) {
+            return Err(ContractError::NotInitialized);
+        }
+        Ok(reports::get_provider_earnings_leaderboard(&env, limit))
     }
 
     /// Returns an earnings report for the provider over the requested period.
