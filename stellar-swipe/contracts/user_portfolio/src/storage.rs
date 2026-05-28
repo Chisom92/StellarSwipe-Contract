@@ -40,4 +40,6 @@ pub enum DataKey {
     LeaderboardRank(Address),
     EarlyAdopterCap,
     TotalUsersFirstOpen,
+    /// Per-user signal watchlist (Issue: signal watchlist).
+    Watchlist(Address),
 }
