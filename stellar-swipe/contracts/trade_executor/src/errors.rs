@@ -49,4 +49,18 @@ pub enum ContractError {
     /// via [`crate::TradeExecutorContract::get_network_error_detail`] and retry
     /// after `retry_after_ledger`.
     NetworkCongestion = 19,
+    /// The SDEX pair has zero or insufficient liquidity. Check `InsufficientLiquidityDetail`
+    /// for available liquidity and required amount. Try again later or reduce trade size.
+    InsufficientLiquidity = 20,
+}
+
+/// Populated when [`ContractError::InsufficientLiquidity`] is returned.
+/// `available_liquidity` is the best ask quantity available; `required_amount` is what was requested.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InsufficientLiquidityDetail {
+    /// Amount of liquidity available at the best ask (0 if order book is empty).
+    pub available_liquidity: i128,
+    /// Amount required for the swap.
+    pub required_amount: i128,
 }

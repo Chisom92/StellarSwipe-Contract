@@ -9,6 +9,7 @@ mod preferences;
 mod queries;
 mod storage;
 mod subscriptions;
+mod watchlist;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
 mod portfolio_tests;
