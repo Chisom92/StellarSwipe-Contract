@@ -238,6 +238,58 @@ impl StakeVaultContract {
         Ok(amount)
     }
 
+    /// Admin: slash (seize) a portion of a provider's stake.
+    /// Called by SignalRegistry when banning a provider (Issue #424).
+    /// The slashed amount is burned (transferred to a zero-address sentinel).
+    pub fn slash_stake(
+        env: Env,
+        caller: Address,
+        provider: Address,
+        amount: i128,
+    ) -> Result<(), StakeVaultError> {
+        // Only the SignalRegistry (authorized caller) can slash stake.
+        caller.require_auth();
+
+        let mut stakes: soroban_sdk::Map<Address, StakeInfoV2> = env
+            .storage()
+            .persistent()
+            .get(&MigrationKey::StakesV2)
+            .unwrap_or_else(|| soroban_sdk::Map::new(&env));
+
+        let mut info = stakes.get(provider.clone()).ok_or(StakeVaultError::NoStake)?;
+
+        if amount <= 0 || amount > info.balance {
+            return Err(StakeVaultError::NoStake);
+        }
+
+        // Reduce the staked balance by the slashed amount
+        info.balance = info
+            .balance
+            .checked_sub(amount)
+            .ok_or(StakeVaultError::NoStake)?;
+        info.last_updated = env.ledger().timestamp();
+        stakes.set(provider.clone(), info);
+        env.storage()
+            .persistent()
+            .set(&MigrationKey::StakesV2, &stakes);
+
+        // Transfer the slashed tokens to the contract itself (effectively burning them
+        // since they stay in the contract and are not withdrawable)
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::StakeToken)
+            .ok_or(StakeVaultError::NotInitialized)?;
+
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &env.current_contract_address(),
+            &amount,
+        );
+
+        Ok(())
+    }
+
     /// Read the current stake balance for `staker` (0 if no record).
     pub fn get_stake(env: Env, staker: Address) -> i128 {
         let stakes: soroban_sdk::Map<Address, StakeInfoV2> = env

@@ -17,6 +17,7 @@ mod ml_scoring;
 mod performance;
 mod query;
 pub mod reputation;
+mod reports;
 mod scheduling;
 mod scoring;
 mod social;
@@ -67,13 +68,14 @@ use stellar_swipe_common::{validate_asset_pair as validate_asset_pair_common, As
 pub use templates::{SignalTemplate, SignalTemplateOverrides, StoredSignalTemplate};
 use templates::{SignalTemplate, DEFAULT_TEMPLATE_EXPIRY_HOURS};
 use types::{
-    AddressMapping, Asset, CrossChainSignal, FeeBreakdown, ImportResultView, ProviderPerformance,
-    RecurrencePattern, Signal, SignalData, SignalEditInput, SignalOutcome, SignalPerformanceView,
-    SignalStatus, SignalSummary, SortOption, SyncStatus, TradeExecution,
+    AddressMapping, Asset, CrossChainSignal, FeeBreakdown, ImportResultView, ProviderMonthlyReport,
+    ProviderPerformance, RecurrencePattern, Signal, SignalData, SignalEditInput, SignalOutcome,
+    SignalPerformanceView, SignalStatus, SignalSummary, SortOption, SyncStatus, TradeExecution,
 };
 use versioning::{CopyRecord, SignalVersion};
 
 const MAX_EXPIRY_SECONDS: u64 = SECONDS_PER_30_DAY_MONTH;
+const WARNING_WINDOW_LEDGERS: u64 = 720;
 
 #[contract]
 pub struct SignalRegistry;
@@ -677,6 +679,11 @@ impl SignalRegistry {
         // Check if signals are paused
         admin::require_not_paused(env, String::from_str(env, CAT_SIGNALS))?;
 
+        // Issue #424: Banned providers cannot submit signals
+        if providers::is_provider_banned(env, &provider) {
+            return Err(AdminError::Unauthorized);
+        }
+
         // Verify provider account still exists on Stellar
         if !Self::check_provider_exists(env, &provider) {
             return Err(AdminError::Unauthorized);
@@ -737,6 +744,9 @@ impl SignalRegistry {
             ai_validation_score: None,
             avg_copier_roi_bps: 0,
             copier_closed_count: 0,
+            warning_emitted: false,
+            benchmark_return_bps: None,
+            alpha_bps: None,
         };
 
         // Auto-enter signal into active contests (before moving signal)
@@ -772,7 +782,7 @@ impl SignalRegistry {
 
     pub fn get_signal(env: Env, signal_id: u64) -> Option<Signal> {
         let mut signals = Self::get_signals_map(&env);
-        let signal = signals.get(signal_id)?;
+        let mut signal = signals.get(signal_id)?;
 
         // If signal is still active, check whether the provider account still exists.
         // If the provider has merged/deleted their account, orphan the signal in-place.
@@ -781,6 +791,22 @@ impl SignalRegistry {
         {
             Self::orphan_signal(&env, &mut signals, signal_id);
             return signals.get(signal_id);
+        }
+
+        // Check for expiry warning (Issue #417)
+        let current_ledger = env.ledger().sequence();
+        let time_to_expiry = signal.expiry.saturating_sub(current_ledger);
+        if time_to_expiry <= WARNING_WINDOW_LEDGERS && !signal.warning_emitted {
+            events::emit_signal_expiry_warning(
+                &env,
+                signal_id,
+                signal.provider.clone(),
+                signal.expiry,
+                time_to_expiry,
+            );
+            signal.warning_emitted = true;
+            signals.set(signal_id, signal.clone());
+            Self::save_signals_map(&env, &signals);
         }
 
         Some(signal)
@@ -1007,6 +1033,16 @@ impl SignalRegistry {
     pub fn get_provider_stats(env: Env, provider: Address) -> Option<ProviderPerformance> {
         let stats = Self::get_provider_stats_map(&env);
         stats.get(provider)
+    }
+
+    pub fn get_provider_monthly_report(
+        env: Env,
+        provider: Address,
+        month: u32,
+        year: u32,
+    ) -> types::ProviderMonthlyReport {
+        let signals = Self::get_signals_map(&env);
+        reports::get_provider_monthly_report(&env, &signals, &provider, month, year)
     }
 
     pub fn create_template(
@@ -1297,6 +1333,59 @@ impl SignalRegistry {
         stakes.set(provider, amount);
         Self::save_provider_stakes_map(&env, &stakes);
         Ok(())
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Issue #424: Provider Ban Mechanism
+    // ═══════════════════════════════════════════════════════════════
+
+    /// Ban a provider, cancelling all active signals and slashing full stake.
+    /// Admin only. Emits `ProviderBanned` event.
+    ///
+    /// # Arguments
+    /// * `caller` - Must be the current admin.
+    /// * `provider` - Provider address to ban.
+    /// * `reason_hash` - On-chain evidence hash (e.g. IPFS CID of dispute docs).
+    /// * `stake_vault` - Address of the StakeVault contract for slashing.
+    pub fn ban_provider(
+        env: Env,
+        caller: Address,
+        provider: Address,
+        reason_hash: String,
+        stake_vault: Address,
+    ) -> Result<(), AdminError> {
+        admin::require_admin(&env, &caller)?;
+        caller.require_auth();
+
+        let mut signals = Self::get_signals_map(&env);
+        let (signals_cancelled, stake_slashed) = providers::ban_provider(
+            &env,
+            &mut signals,
+            &provider,
+            &reason_hash,
+            &stake_vault,
+        );
+        Self::save_signals_map(&env, &signals);
+
+        providers::emit_provider_banned(
+            &env,
+            &provider,
+            &reason_hash,
+            signals_cancelled,
+            stake_slashed,
+        );
+
+        Ok(())
+    }
+
+    /// Check if a provider is banned
+    pub fn is_provider_banned(env: Env, provider: Address) -> bool {
+        providers::is_provider_banned(&env, &provider)
+    }
+
+    /// Get the ban reason hash for a provider (None if not banned)
+    pub fn get_ban_reason(env: Env, provider: Address) -> Option<String> {
+        providers::get_ban_reason(&env, &provider)
     }
 
     /// Check whether a provider meets automated verification criteria.
@@ -1650,6 +1739,18 @@ impl SignalRegistry {
     pub fn get_global_analytics(env: Env) -> analytics::GlobalAnalytics {
         let signals = Self::get_signals_map(&env);
         analytics::calculate_global_analytics(&env, &signals)
+    }
+
+    /// Get category-level performance analytics (Issue #419)
+    /// Returns analytics for the given category, including avg success rate,
+    /// avg ROI, total signals, total adopters, and top provider.
+    /// Empty categories return zero-valued analytics (no error).
+    pub fn get_category_analytics(
+        env: Env,
+        category: SignalCategory,
+    ) -> analytics::CategoryAnalytics {
+        let signals = Self::get_signals_map(&env);
+        analytics::calculate_category_analytics(&env, &signals, &category)
     }
 
     /* =========================

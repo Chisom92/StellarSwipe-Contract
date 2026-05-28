@@ -142,3 +142,21 @@ pub fn emit_fees_claimed(env: &Env, evt: EvtFeesClaimed) {
 pub fn emit_first_trade_fee_waived(env: &Env, user: &Address) {
     FirstTradeFeeWaived { user: user.clone() }.publish(env);
 }
+
+// ── Issue #442: Revenue Share Distributed event ─────────────────────
+
+/// Emitted when a revenue share snapshot is taken and distributed.
+pub fn emit_revenue_share_distributed(
+    env: &Env,
+    token: &Address,
+    total_amount: i128,
+    snapshot_ledger: u64,
+) {
+    env.events().publish(
+        (
+            Symbol::new(env, "fee_collector"),
+            Symbol::new(env, "revenue_share_distributed"),
+        ),
+        (token.clone(), total_amount, snapshot_ledger),
+    );
+}

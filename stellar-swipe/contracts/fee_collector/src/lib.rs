@@ -28,7 +28,7 @@ use storage::{
     MAX_FEE_RATE_BPS, MIN_FEE_RATE_BPS,
 };
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
+use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 
 use stellar_swipe_common::Asset;
 use stellar_swipe_common::SECONDS_PER_DAY;
@@ -395,7 +395,19 @@ impl FeeCollector {
             return Ok(0);
         }
 
-        let fee_rate = rebates::get_fee_rate_for_user(&env, &trader);
+        let base_fee_rate = rebates::get_fee_rate_for_user(&env, &trader);
+
+        // Issue #438: Apply protocol token discount (50% off) if the fee token
+        // matches the configured protocol token.
+        let fee_rate = if let Some(protocol_token) = storage::get_protocol_token(&env) {
+            if token == protocol_token {
+                (base_fee_rate / 2).max(storage::MIN_FEE_RATE_BPS)
+            } else {
+                base_fee_rate
+            }
+        } else {
+            base_fee_rate
+        };
 
         // Rounding strategy (documented):
         //   fee = floor(trade_amount * fee_rate / 10_000)
@@ -446,8 +458,21 @@ impl FeeCollector {
             .publish(&env);
         }
 
+        // Issue #442: Allocate a portion of distributable to revenue share pool
+        let revenue_share_rate = storage::get_revenue_share_rate_bps(&env);
+        let revenue_share_amount = distributable
+            .checked_mul(revenue_share_rate as i128)
+            .and_then(|v| v.checked_div(10_000))
+            .unwrap_or(0);
+        let treasury_credit = distributable.saturating_sub(revenue_share_amount);
+
+        // Add revenue share to the pool for this token
+        if revenue_share_amount > 0 {
+            storage::add_revenue_share_pool(&env, &token, revenue_share_amount);
+        }
+
         let updated_treasury_balance = get_treasury_balance(&env, &token)
-            .checked_add(distributable)
+            .checked_add(treasury_credit)
             .ok_or(ContractError::ArithmeticOverflow)?;
         set_treasury_balance(&env, &token, updated_treasury_balance);
 
@@ -521,15 +546,101 @@ impl FeeCollector {
         Ok(())
     }
 
-    /// Returns the provider earnings leaderboard ordered by all-time earnings.
-    pub fn get_provider_earnings_leaderboard(
-        env: Env,
-        limit: u32,
-    ) -> Result<Vec<EarningsLeaderboardEntry>, ContractError> {
+    // ── Issue #438: Protocol Token Integration ─────────────────────
+
+    /// Returns the currently configured protocol token address, if any.
+    /// When set, token-based fee payments are accepted with a 50% discount.
+    /// When not set, only XLM/USDC payments are accepted (current behavior).
+    pub fn get_protocol_token(env: Env) -> Option<Address> {
+        storage::get_protocol_token(&env)
+    }
+
+    /// Admin: set or clear the protocol token address for token-based fee payment.
+    /// Pass `None` to clear (revert to XLM/USDC-only mode).
+    pub fn set_protocol_token(env: Env, token: Option<Address>) -> Result<(), ContractError> {
         if !is_initialized(&env) {
             return Err(ContractError::NotInitialized);
         }
-        Ok(reports::get_provider_earnings_leaderboard(&env, limit))
+        let admin = get_admin(&env);
+        admin.require_auth();
+
+        if let Some(token_addr) = token {
+            storage::set_protocol_token(&env, &token_addr);
+        } else {
+            // Clear by setting to a zero-address sentinel
+            let zero = Address::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+            storage::set_protocol_token(&env, &zero);
+        }
+        Ok(())
+    }
+
+    /// Calculate fee with optional protocol token discount.
+    /// If the token being used matches the configured protocol token,
+    /// a 50% discount is applied (fee_rate is halved).
+    fn effective_fee_rate_for_payment(env: &Env, token: &Address) -> u32 {
+        let base_rate = storage::get_fee_rate(env);
+        if let Some(protocol_token) = storage::get_protocol_token(env) {
+            if *token == protocol_token {
+                return base_rate / 2; // 50% discount
+            }
+        }
+        base_rate
+    }
+
+    // ── Issue #442: Revenue Sharing with Token Holders ──────────────
+
+    /// Get the current revenue share rate in basis points (default: 2000 = 20%).
+    pub fn get_revenue_share_rate_bps(env: Env) -> u32 {
+        storage::get_revenue_share_rate_bps(&env)
+    }
+
+    /// Admin: set the revenue share rate (in basis points).
+    pub fn set_revenue_share_rate_bps(env: Env, rate_bps: u32) -> Result<(), ContractError> {
+        if !is_initialized(&env) {
+            return Err(ContractError::NotInitialized);
+        }
+        let admin = get_admin(&env);
+        admin.require_auth();
+        if rate_bps > 10_000 {
+            return Err(ContractError::InvalidAmount);
+        }
+        storage::set_revenue_share_rate_bps(&env, rate_bps);
+        Ok(())
+    }
+
+    /// Get the accumulated revenue share pool for a given token.
+    pub fn get_revenue_share_pool(env: Env, token: Address) -> i128 {
+        storage::get_revenue_share_pool(&env, &token)
+    }
+
+    /// Admin: trigger a revenue share distribution snapshot.
+    /// The accumulated pool for each token is recorded and the pool is reset.
+    /// This should be called weekly.
+    pub fn trigger_revenue_share_snapshot(
+        env: Env,
+        caller: Address,
+        token: Address,
+    ) -> Result<(), ContractError> {
+        if !is_initialized(&env) {
+            return Err(ContractError::NotInitialized);
+        }
+        let admin = get_admin(&env);
+        admin.require_auth();
+        caller.require_auth();
+
+        let pool_amount = storage::get_revenue_share_pool(&env, &token);
+        if pool_amount > 0 {
+            let ledger = env.ledger().sequence();
+            storage::set_last_revenue_share_snapshot(&env, ledger);
+
+            // Emit RevenueShareDistributed event
+            events::emit_revenue_share_distributed(&env, &token, pool_amount, ledger);
+
+            // Clear the pool for the next cycle
+            storage::clear_revenue_share_pool(&env, &token);
+        }
+
+        Ok(())
     }
 
     /// Returns an earnings report for the provider over the requested period.

@@ -81,6 +81,25 @@ pub struct Signal {
     pub avg_copier_roi_bps: i32,
     /// Number of copiers whose positions have closed (denominator for avg_copier_roi_bps).
     pub copier_closed_count: u32,
+    /// Whether expiry warning has been emitted for this signal (Issue #417).
+    pub warning_emitted: bool,
+    /// Benchmark return in basis points at signal close (Issue #418).
+    pub benchmark_return_bps: Option<i64>,
+    /// Alpha (outperformance) in basis points at signal close (Issue #418).
+    pub alpha_bps: Option<i64>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ProviderMonthlyReport {
+    pub signals_submitted: u32,
+    pub signals_closed: u32,
+    pub success_rate: u32,
+    pub total_adopters: u32,
+    pub fees_earned: i128,
+    pub reputation_change: i32,
+    pub best_signal_id: Option<u64>,
+    pub worst_signal_id: Option<u64>,
 }
 
 /// Legacy on-chain format (v1) before v2 added `submitted_at`, `rationale_hash`,
@@ -150,6 +169,21 @@ pub struct ProviderPerformance {
     pub avg_return: i128,
     pub total_volume: i128,
     pub follower_count: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Win,
+    Loss,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ProviderProfile {
+    pub provider: Address,
+    pub last_5_outcomes: Vec<Outcome>,
+    pub cooling_off_ends_at: u64,
 }
 
 #[contracttype]

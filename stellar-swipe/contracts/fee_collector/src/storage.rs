@@ -32,6 +32,15 @@ pub enum StorageKey {
     ProviderEarningsIndex,
     /// Whether a user has completed their first trade (Issue #428).
     HasTraded(Address),
+    // ── Issue #438: Protocol Token Integration ─────────────────────
+    /// Optional protocol token address for token-based fee payment.
+    ProtocolToken,
+    /// Revenue share rate in basis points (default: 2000 = 20%).
+    RevenueShareRateBps,
+    /// Last snapshot ledger for revenue sharing (Issue #442).
+    LastRevenueShareSnapshot,
+    /// Accumulated revenue share pool waiting for next distribution.
+    RevenueSharePool(Address),
 }
 
 #[contracttype]
@@ -262,4 +271,70 @@ pub fn set_has_traded(env: &Env, user: &Address) {
     env.storage()
         .persistent()
         .set(&StorageKey::HasTraded(user.clone()), &true);
+}
+
+// ── Issue #438: Protocol Token ──────────────────────────────────────
+
+pub fn get_protocol_token(env: &Env) -> Option<Address> {
+    env.storage().instance().get(&StorageKey::ProtocolToken)
+}
+
+pub fn set_protocol_token(env: &Env, token: &Address) {
+    env.storage()
+        .instance()
+        .set(&StorageKey::ProtocolToken, token);
+}
+
+// ── Issue #442: Revenue Share ────────────────────────────────────────
+
+pub const DEFAULT_REVENUE_SHARE_RATE_BPS: u32 = 2000; // 20%
+pub const SECONDS_PER_WEEK: u64 = 604_800;
+
+pub fn get_revenue_share_rate_bps(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&StorageKey::RevenueShareRateBps)
+        .unwrap_or(DEFAULT_REVENUE_SHARE_RATE_BPS)
+}
+
+pub fn set_revenue_share_rate_bps(env: &Env, rate_bps: u32) {
+    env.storage()
+        .instance()
+        .set(&StorageKey::RevenueShareRateBps, &rate_bps);
+}
+
+pub fn get_last_revenue_share_snapshot(env: &Env) -> Option<u64> {
+    env.storage()
+        .instance()
+        .get(&StorageKey::LastRevenueShareSnapshot)
+}
+
+pub fn set_last_revenue_share_snapshot(env: &Env, ledger: u64) {
+    env.storage()
+        .instance()
+        .set(&StorageKey::LastRevenueShareSnapshot, &ledger);
+}
+
+pub fn get_revenue_share_pool(env: &Env, token: &Address) -> i128 {
+    env.storage()
+        .persistent()
+        .get(&StorageKey::RevenueSharePool(token.clone()))
+        .unwrap_or(0)
+}
+
+pub fn add_revenue_share_pool(env: &Env, token: &Address, amount: i128) {
+    let current: i128 = env
+        .storage()
+        .persistent()
+        .get(&StorageKey::RevenueSharePool(token.clone()))
+        .unwrap_or(0);
+    env.storage()
+        .persistent()
+        .set(&StorageKey::RevenueSharePool(token.clone()), &current.saturating_add(amount));
+}
+
+pub fn clear_revenue_share_pool(env: &Env, token: &Address) {
+    env.storage()
+        .persistent()
+        .remove(&StorageKey::RevenueSharePool(token.clone()));
 }

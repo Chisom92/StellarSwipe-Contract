@@ -229,6 +229,9 @@ mod tests {
             ai_validation_score: ai_score,
             avg_copier_roi_bps: 0,
             copier_closed_count: 0,
+            warning_emitted: false,
+            benchmark_return_bps: None,
+            alpha_bps: None,
         }
     }
 

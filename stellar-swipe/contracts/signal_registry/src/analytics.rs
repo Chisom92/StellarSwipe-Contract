@@ -1,3 +1,4 @@
+use crate::categories::SignalCategory;
 use crate::social::get_follower_count;
 use crate::types::{Signal, SignalStatus};
 use soroban_sdk::{contracttype, Address, Env, Map, String, Vec};
@@ -287,3 +288,119 @@ fn calculate_follower_growth(env: &Env, provider: &Address) -> i128 {
     // Full implementation would track historical data
     get_follower_count(env, provider) as i128
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Issue #419: Signal Category Performance Analytics
+// ═══════════════════════════════════════════════════════════════════
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CategoryAnalytics {
+    /// Average success rate across all closed signals in the category (bps)
+    pub avg_success_rate: u32,
+    /// Average ROI in basis points across all closed signals
+    pub avg_roi_bps: i128,
+    /// Total number of signals in this category (all statuses)
+    pub total_signals: u32,
+    /// Total unique adopters across signals in this category
+    pub total_adopters: u32,
+    /// Address of the top provider by success rate in this category (empty string if none)
+    pub top_provider: Address,
+}
+
+/// Aggregate category analytics from all closed signals.
+/// Returns zero-valued analytics for empty categories (no error).
+pub fn calculate_category_analytics(
+    env: &Env,
+    signals_map: &Map<u64, Signal>,
+    category: &SignalCategory,
+) -> CategoryAnalytics {
+    let mut total_signals: u32 = 0;
+    let mut total_successful: u32 = 0;
+    let mut closed_count: u32 = 0;
+    let mut total_roi: i128 = 0;
+    let mut total_adopters: u32 = 0;
+    let mut provider_success: Map<Address, (u32, u32)> = Map::new(env); // (successful, total)
+
+    for i in 0..signals_map.keys().len() {
+        if let Some(key) = signals_map.keys().get(i) {
+            if let Some(signal) = signals_map.get(key) {
+                if signal.category != *category {
+                    continue;
+                }
+                total_signals += 1;
+                total_adopters = total_adopters.saturating_add(signal.adoption_count);
+
+                // Only count closed (terminal) signals with adoption for success rate
+                if matches!(
+                    signal.status,
+                    SignalStatus::Successful | SignalStatus::Failed
+                ) && signal.adoption_count > 0
+                {
+                    closed_count += 1;
+                    if signal.status == SignalStatus::Successful {
+                        total_successful += 1;
+                    }
+
+                    // Track per-provider stats for top_provider
+                    let entry = provider_success
+                        .get(signal.provider.clone())
+                        .unwrap_or((0, 0));
+                    let new_successful = if signal.status == SignalStatus::Successful {
+                        entry.0 + 1
+                    } else {
+                        entry.0
+                    };
+                    provider_success.set(signal.provider.clone(), (new_successful, entry.1 + 1));
+
+                    // Accumulate average ROI per signal
+                    if signal.executions > 0 {
+                        total_roi = total_roi.saturating_add(
+                            signal.total_roi / signal.executions as i128,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let avg_success_rate = if closed_count > 0 {
+        (total_successful * 10000) / closed_count
+    } else {
+        0
+    };
+
+    let avg_roi_bps = if closed_count > 0 {
+        total_roi / closed_count as i128
+    } else {
+        0
+    };
+
+    // Find top provider (highest success rate among those with >= 3 closed signals)
+    let mut top_provider: Option<Address> = None;
+    let mut top_rate: u32 = 0;
+    for key in provider_success.keys() {
+        if let Some((successful, total)) = provider_success.get(key.clone()) {
+            if total >= 3 {
+                let rate = (successful * 10000) / total;
+                if rate > top_rate {
+                    top_rate = rate;
+                    top_provider = Some(key);
+                }
+            }
+        }
+    }
+
+    CategoryAnalytics {
+        avg_success_rate,
+        avg_roi_bps,
+        total_signals,
+        total_adopters,
+        top_provider: top_provider.unwrap_or_else(|| {
+            // Use a zero-address placeholder when no provider qualifies
+            Address::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")
+        }),
+    }
+}
+
+

@@ -356,3 +356,25 @@ pub fn emit_storage_capacity_warning(
     env.events()
         .publish(topics, (storage_type, entry_count, capacity_limit));
 }
+
+pub fn emit_signal_expiry_warning(
+    env: &Env,
+    signal_id: u64,
+    provider: Address,
+    expires_at: u64,
+    time_remaining_ledgers: u64,
+) {
+    let topics = (Symbol::new(env, "signal_expiry_warning"),);
+    env.events()
+        .publish(topics, (signal_id, provider, expires_at, time_remaining_ledgers));
+}
+
+pub fn emit_provider_cooling_off_started(
+    env: &Env,
+    provider: Address,
+    ends_at: u64,
+) {
+    let topics = (Symbol::new(env, "provider_cooling_off"),);
+    env.events()
+        .publish(topics, (provider, ends_at));
+}
