@@ -40,6 +40,10 @@ pub enum DataKey {
     LeaderboardRank(Address),
     EarlyAdopterCap,
     TotalUsersFirstOpen,
+    /// Per-user trading style profile for personalized signal recommendations.
+    TradingStyle(Address),
+    /// Configured SignalRegistry contract address used by recommendation queries.
+    SignalRegistry,
     /// Per-user signal watchlist (Issue: signal watchlist).
     Watchlist(Address),
 }
