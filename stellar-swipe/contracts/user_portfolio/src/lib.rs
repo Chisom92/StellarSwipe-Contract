@@ -16,7 +16,7 @@ mod portfolio_tests;
 
 pub use achievements::{Achievement, AchievementType};
 pub use badges::{Badge, BadgeType};
-pub use preferences::NotificationPrefs;
+pub use preferences::{HoldDuration, NotificationPrefs, RiskRating, SignalCategory, SignalAction, SignalSummary, TradingStyle};
 
 use soroban_sdk::{contract, contractimpl, contracterror, contracttype, Address, Env, Vec};
 use storage::DataKey;
@@ -592,6 +592,40 @@ impl UserPortfolio {
     /// Returns default (all enabled) if never set.
     pub fn get_notification_preferences(env: Env, user: Address) -> NotificationPrefs {
         preferences::get_notification_preferences(&env, &user)
+    }
+
+    /// Configure the SignalRegistry contract address used by recommendation queries.
+    pub fn set_signal_registry(env: Env, caller: Address, registry: Address) {
+        Self::require_admin(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::SignalRegistry, &registry);
+    }
+
+    /// Retrieve the configured SignalRegistry address.
+    pub fn get_signal_registry(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::SignalRegistry)
+    }
+
+    /// Store trading style profile for `user`. Caller must be `user`.
+    pub fn set_trading_style(env: Env, user: Address, style: TradingStyle) {
+        preferences::set_trading_style(&env, &user, style);
+    }
+
+    /// Retrieve trading style profile for `user`.
+    pub fn get_trading_style(env: Env, user: Address) -> Option<TradingStyle> {
+        preferences::get_trading_style(&env, &user)
+    }
+
+    /// Returns recommended active signals for `user` based on their trading style.
+    /// When no style is configured, returns all active signals.
+    pub fn get_recommended_signals(env: Env, user: Address) -> Vec<SignalSummary> {
+        let registry: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::SignalRegistry)
+            .expect("signal registry not configured");
+        preferences::get_recommended_signals(&env, &user, &registry)
     }
 
     // ── Issue #432: Achievement System ───────────────────────────────────────
