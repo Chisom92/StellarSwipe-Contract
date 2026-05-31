@@ -34,7 +34,7 @@ use stellar_swipe_common::Asset;
 use stellar_swipe_common::SECONDS_PER_DAY;
 
 #[cfg(test)]
-mod test;
+mod tests;
 
 /// Compute the fee charged to a trader using **floor (truncating) division**.
 ///
