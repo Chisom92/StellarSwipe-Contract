@@ -130,9 +130,13 @@ pub fn verify_expected_contract_hash(env: &Env, contract_id: &Address) -> Result
     verify_wasm_hash(env, contract_id).map_err(|_| CrossContractError::ContractHashMismatch)
 }
 
-pub fn validate_callee_version(env: &Env, contract_id: &Address) -> Result<(), CrossContractError> {
+pub fn validate_callee_version(
+    env: &Env,
+    contract_id: &Address,
+    kind: crate::version::ContractKind,
+) -> Result<(), CrossContractError> {
     let version = CrossContractVersionClient::new(env, contract_id).get_contract_version();
-    check_compatible(version).map_err(|_| CrossContractError::VersionMismatch)
+    check_compatible(version, kind).map_err(|_| CrossContractError::VersionMismatch)
 }
 
 pub fn validate_payload(env: &Env, payload: &Bytes) -> Result<(), CrossContractError> {
@@ -302,7 +306,7 @@ mod tests {
         let env = Env::default();
         let v_contract = env.register(VersionedContract, ());
         env.as_contract(&v_contract, || {
-            let result = validate_callee_version(&env, &Address::Contract(v_contract.clone()));
+            let result = validate_callee_version(&env, &Address::Contract(v_contract.clone()), crate::version::ContractKind::SignalRegistry);
             assert_eq!(result, Err(CrossContractError::VersionMismatch));
         });
     }
