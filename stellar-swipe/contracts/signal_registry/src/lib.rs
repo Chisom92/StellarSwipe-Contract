@@ -42,6 +42,7 @@ use admin::{
 use stellar_swipe_common::emergency::PauseState;
 use stellar_swipe_common::rate_limit::{self as rl, ActionType as RLAction, RateLimitConfig};
 use stellar_swipe_common::SECONDS_PER_30_DAY_MONTH;
+use shared::version::{set_contract_version, SIGNAL_REGISTRY_VERSION};
 
 use combos::{
     cancel_combo, create_combo_signal, execute_combo_signal, get_combo, get_combo_executions_pub,
@@ -137,7 +138,9 @@ impl SignalRegistry {
     /// # Errors
     /// - [`AdminError::AlreadyInitialized`] if the contract has already been initialized.
     pub fn initialize(env: Env, admin: Address) -> Result<(), AdminError> {
-        init_admin(&env, admin)
+        init_admin(&env, admin)?;
+        set_contract_version(&env, SIGNAL_REGISTRY_VERSION);
+        Ok(())
     }
 
     /// Register the TradeExecutor contract address (admin only). Required before `increment_adoption`.
