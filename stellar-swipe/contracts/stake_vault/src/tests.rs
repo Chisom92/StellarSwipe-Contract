@@ -229,6 +229,71 @@ fn lock_cleared_after_failed_withdrawal() {
     assert!(!lock_still_set, "lock was not cleared after failed withdrawal");
 }
 
+// ── slash_stake tests ────────────────────────────────────────────────────────
+
+#[test]
+fn slash_stake_emits_event() {
+    use soroban_sdk::testutils::Events;
+    let (env, vault_id, token, _admin) = setup();
+    let caller = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let amount: i128 = 500_000;
+
+    StellarAssetClient::new(&env, &token).mint(&vault_id, &amount);
+    seed_v2_stake(&env, &vault_id, &provider, amount, 0);
+
+    let events_before = env.events().all().len();
+    StakeVaultContractClient::new(&env, &vault_id)
+        .slash_stake(&caller, &provider, &amount, &Symbol::new(&env, "ban"));
+
+    assert!(
+        env.events().all().len() > events_before,
+        "stake_slashed event not emitted"
+    );
+}
+
+#[test]
+fn slash_stake_reduces_provider_balance() {
+    let (env, vault_id, token, _admin) = setup();
+    let caller = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let initial: i128 = 1_000_000;
+    let slash_amount: i128 = 300_000;
+
+    StellarAssetClient::new(&env, &token).mint(&vault_id, &initial);
+    seed_v2_stake(&env, &vault_id, &provider, initial, 0);
+
+    let client = StakeVaultContractClient::new(&env, &vault_id);
+    client.slash_stake(&caller, &provider, &slash_amount, &Symbol::new(&env, "fraud"));
+
+    assert_eq!(client.get_stake(&provider), initial - slash_amount);
+}
+
+#[test]
+fn slash_stake_burns_tokens_from_vault() {
+    use soroban_sdk::token;
+    let (env, vault_id, token_addr, _admin) = setup();
+    let caller = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let initial: i128 = 1_000_000;
+    let slash_amount: i128 = 400_000;
+
+    StellarAssetClient::new(&env, &token_addr).mint(&vault_id, &initial);
+    seed_v2_stake(&env, &vault_id, &provider, initial, 0);
+
+    let token_client = token::Client::new(&env, &token_addr);
+    let balance_before = token_client.balance(&vault_id);
+
+    StakeVaultContractClient::new(&env, &vault_id)
+        .slash_stake(&caller, &provider, &slash_amount, &Symbol::new(&env, "misconduct"));
+
+    assert_eq!(
+        token_client.balance(&vault_id),
+        balance_before - slash_amount,
+        "slashed tokens were not burned from vault"
+    );
+}
+
 // ── Issue #388: stake-below-minimum tests ─────────────────────────────────────
 
 #[test]
