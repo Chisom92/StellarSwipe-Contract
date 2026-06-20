@@ -281,15 +281,23 @@ impl StakeVaultContract {
 
     /// Admin: slash (seize) a portion of a provider's stake.
     /// Called by SignalRegistry when banning a provider (Issue #424).
-    /// The slashed amount is burned (transferred to a zero-address sentinel).
+    /// The slashed amount is burned via the token's burn function and a
+    /// structured `stake_slashed` event is emitted for audit purposes.
     pub fn slash_stake(
         env: Env,
         caller: Address,
         provider: Address,
         amount: i128,
+        reason: Symbol,
     ) -> Result<(), StakeVaultError> {
         // Only the SignalRegistry (authorized caller) can slash stake.
         caller.require_auth();
+
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&StorageKey::StakeToken)
+            .ok_or(StakeVaultError::NotInitialized)?;
 
         let mut stakes: soroban_sdk::Map<Address, StakeInfoV2> = env
             .storage()
@@ -303,7 +311,7 @@ impl StakeVaultContract {
             return Err(StakeVaultError::NoStake);
         }
 
-        // Reduce the staked balance by the slashed amount
+        // Reduce the staked balance before the burn (checks-effects-interactions).
         info.balance = info
             .balance
             .checked_sub(amount)
@@ -314,19 +322,17 @@ impl StakeVaultContract {
             .persistent()
             .set(&MigrationKey::StakesV2, &stakes);
 
-        // Transfer the slashed tokens to the contract itself (effectively burning them
-        // since they stay in the contract and are not withdrawable)
-        let token: Address = env
-            .storage()
-            .instance()
-            .get(&StorageKey::StakeToken)
-            .ok_or(StakeVaultError::NotInitialized)?;
-
-        token::Client::new(&env, &token).transfer(
-            &env.current_contract_address(),
-            &env.current_contract_address(),
-            &amount,
+        // Emit structured event for audit trail before the external call.
+        env.events().publish(
+            (
+                Symbol::new(&env, "stake_vault"),
+                Symbol::new(&env, "stake_slashed"),
+            ),
+            (provider.clone(), amount, reason),
         );
+
+        // Burn the slashed tokens from the contract's token balance.
+        token::Client::new(&env, &token).burn(&env.current_contract_address(), &amount);
 
         Ok(())
     }
