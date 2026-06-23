@@ -590,7 +590,9 @@ impl GovernanceContract {
         user: Address,
     ) -> Result<GovernanceReputation, GovernanceError> {
         require_initialized(&env)?;
-        Ok(get_governance_reputation(&env, user))
+        let mut rep = get_governance_reputation(&env, user.clone());
+        rep.reputation_score = reputation::calculate_reputation_score(&env, user)?;
+        Ok(rep)
     }
 
     pub fn calculate_reputation_score(env: Env, user: Address) -> Result<u32, GovernanceError> {

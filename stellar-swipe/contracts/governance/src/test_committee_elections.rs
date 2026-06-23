@@ -46,6 +46,12 @@ fn client<'a>(env: &'a Env, contract_id: &'a Address) -> GovernanceContractClien
     GovernanceContractClient::new(env, contract_id)
 }
 
+fn fund_user(env: &Env, contract_id: &Address, user: &Address, amount: i128) {
+    env.as_contract(contract_id, || {
+        crate::add_balance(env, user, amount).unwrap();
+    });
+}
+
 fn initialize(
     client: &GovernanceContractClient<'_>,
     env: &Env,
@@ -465,6 +471,7 @@ fn successful_election_with_quorum_checks_installs_winners() {
     client.stake(&recipients.community_rewards, &100_000_000);
     client.stake(&recipients.public_sale, &50_000_000);
     client.stake(&recipients.treasury, &30_000_000);
+    fund_user(&env, &contract_id, &recipients.team, 20_000_000);
     client.stake(&recipients.team, &20_000_000);
 
     let committee_id = create_test_committee(&client, &env, &admin);
