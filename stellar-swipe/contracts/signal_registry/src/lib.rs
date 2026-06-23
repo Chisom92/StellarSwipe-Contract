@@ -1,5 +1,9 @@
 #![no_std]
 
+#[cfg(target_family = "wasm")]
+#[global_allocator]
+static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+
 mod admin;
 mod analytics;
 mod categories;
