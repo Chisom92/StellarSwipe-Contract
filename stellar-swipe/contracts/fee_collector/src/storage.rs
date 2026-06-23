@@ -58,7 +58,7 @@ pub enum StorageKey {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FeeOptimizationConfig {
     pub max_dynamic_rate_bps: u32,
     pub congestion_sensitivity_bps: u32,

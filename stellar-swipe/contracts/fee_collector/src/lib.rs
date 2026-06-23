@@ -858,7 +858,7 @@ impl FeeCollector {
 
         let pool_amount = storage::get_revenue_share_pool(&env, &token);
         if pool_amount > 0 {
-            let ledger = env.ledger().sequence();
+            let ledger = env.ledger().sequence() as u64;
             storage::set_last_revenue_share_snapshot(&env, ledger);
 
             // Emit RevenueShareDistributed event

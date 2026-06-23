@@ -4,7 +4,7 @@
 //! filter event subscriptions accordingly.
 
 use crate::storage::DataKey;
-use soroban_sdk::{contracttype, Address, Env, String, Symbol, Val, Vec};
+use soroban_sdk::{contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec};
 
 /// Notification preferences for a user.
 /// Default: all alerts enabled.
@@ -92,7 +92,7 @@ pub struct Signal {
     pub rationale: String,
     pub timestamp: u64,
     pub expiry: u64,
-    pub status: crate::SignalStatus,
+    pub status: SignalStatus,
     pub executions: u32,
     pub successful_executions: u32,
     pub total_volume: i128,
@@ -199,7 +199,7 @@ fn category_in_preferences(category: &SignalCategory, preferred: &Vec<SignalCate
         return true;
     }
     for i in 0..preferred.len() {
-        if preferred.get(i) == Some(category) {
+        if preferred.get(i) == Some(category.clone()) {
             return true;
         }
     }

@@ -22,12 +22,12 @@ impl Default for BridgeRateLimits {
     fn default() -> Self {
         BridgeRateLimits {
             per_user_hourly_transfers: 10,
-            per_user_hourly_volume: 1_000_000_0000000,
+            per_user_hourly_volume: 10_000_000_000_000,
             per_user_daily_transfers: 50,
-            per_user_daily_volume: 5_000_000_0000000,
+            per_user_daily_volume: 50_000_000_000_000,
             global_hourly_capacity: 1000,
-            global_daily_volume: 100_000_000_0000000,
-            min_transfer_amount: 1_0000000,
+            global_daily_volume: 1_000_000_000_000_000,
+            min_transfer_amount: 10_000_000,
             cooldown_between_transfers: 30,
         }
     }

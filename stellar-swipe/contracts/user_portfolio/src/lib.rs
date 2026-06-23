@@ -5,6 +5,7 @@
 mod achievements;
 mod badges;
 mod migration;
+mod onboarding;
 #[cfg(test)]
 #[path = "tests/mod.rs"]
 mod portfolio_tests;
@@ -16,12 +17,13 @@ mod watchlist;
 
 pub use achievements::{Achievement, AchievementType};
 pub use badges::{Badge, BadgeType};
+pub use onboarding::OnboardingStatus;
 pub use preferences::{
     HoldDuration, NotificationPrefs, RiskRating, SignalAction, SignalCategory, SignalSummary,
     TradingStyle,
 };
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String, Vec};
 use storage::DataKey;
 
 pub use subscriptions::SubscriptionError;

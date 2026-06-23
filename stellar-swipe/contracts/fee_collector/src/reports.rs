@@ -110,14 +110,15 @@ pub fn get_provider_earnings_report(
 pub fn get_provider_earnings_leaderboard(env: &Env, limit: u32) -> Vec<EarningsLeaderboardEntry> {
     let limit = if limit == 0 { 10 } else { limit.min(50) };
     let mut entries = Vec::new(env);
-    for provider in crate::storage::get_provider_earnings_index(env).keys() {
-        if let Some(provider_addr) = provider {
-            let amount = crate::storage::get_provider_total_earnings(env, provider_addr);
+    let index = crate::storage::get_provider_earnings_index(env);
+    for i in 0..index.len() {
+        if let Some(provider_addr) = index.get(i) {
+            let amount = crate::storage::get_provider_total_earnings(env, &provider_addr);
             if amount <= 0 {
                 continue;
             }
             let first_day =
-                crate::storage::get_provider_earnings_first_day(env, provider_addr).unwrap_or(0);
+                crate::storage::get_provider_earnings_first_day(env, &provider_addr).unwrap_or(0);
             entries.push_back(EarningsLeaderboardEntry {
                 rank: 0,
                 provider: provider_addr.clone(),

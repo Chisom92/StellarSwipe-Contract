@@ -15,12 +15,9 @@ pub fn emit_onboarding_status_updated(
     status: OnboardingStatus,
     milestone: Option<String>,
 ) {
+    #[allow(deprecated)]
     env.events().publish(
-        (
-            Symbol::new(env, "UserOnboardingStatusUpdated"),
-            user,
-            status,
-            milestone,
-        ),
+        (Symbol::new(env, "UserOnboardingStatusUpdated"),),
+        (user, status, milestone),
     );
 }
