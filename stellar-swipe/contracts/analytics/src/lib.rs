@@ -167,6 +167,7 @@ impl AnalyticsContract {
         let success_rate_wow = (current.avg_success_rate_bps as i32)
             .saturating_sub(previous.avg_success_rate_bps as i32);
 
+        #[allow(deprecated)]
         env.events().publish(
             (
                 Symbol::new(&env, "analytics"),
