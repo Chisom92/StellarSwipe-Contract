@@ -1710,6 +1710,19 @@ impl SignalRegistry {
         signals.set(signal_id, signal.clone());
         Self::save_signals_map(&env, &signals);
 
+        let provider = signal.provider.clone();
+        let mut provider_stats_map = Self::get_provider_stats_map(&env);
+        let mut provider_stats = provider_stats_map
+            .get(provider.clone())
+            .unwrap_or_default();
+        provider_stats.total_copies = provider_stats
+            .total_copies
+            .checked_add(1)
+            .ok_or(AdminError::InvalidParameter)?;
+        provider_stats_map.set(provider.clone(), provider_stats.clone());
+        Self::save_provider_stats_map(&env, &provider_stats_map);
+        update_leaderboard_index(&env, provider, &provider_stats);
+
         // Save nonce
         let mut nonces = nonces;
         nonces.set(nonce_key, true);
