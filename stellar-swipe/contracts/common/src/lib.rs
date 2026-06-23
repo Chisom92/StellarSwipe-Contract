@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod amm_bridge;
 pub mod assets;
 pub mod commit_reveal;
 pub mod constants;
@@ -46,6 +47,12 @@ pub use rate_limit::{
     check_rate_limit, record_action, set_config as set_rate_limit_config, ActionType, RateLimitConfig,
 };
 pub use replay_protection::{current_nonce, verify_and_commit, ReplayError};
+pub use amm_bridge::{
+    build_fallback_chain, emit_fallback_used, emit_quote_discovered, emit_route_planned,
+    min_amount_out_with_slippage, plan_multi_source_route, quote_constant_product,
+    quote_from_pool_reserves, rank_quotes_by_price, AmmBridgeError, AmmQuote, AmmRoutePlan,
+    AmmRouteSegment, AmmSourceConfig, AmmSourceKind, BPS_DENOMINATOR, FN_GET_BEST_ASK, FN_SWAP,
+};
 
 #[cfg(test)]
 mod storage_key_tests;

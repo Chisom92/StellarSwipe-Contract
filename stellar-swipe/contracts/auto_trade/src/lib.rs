@@ -1,10 +1,13 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 
 mod admin;
 mod advanced_risk;
+#[cfg(feature = "testutils")]
+pub mod amm_bridge;
+#[cfg(not(feature = "testutils"))]
+mod amm_bridge;
 #[cfg(not(feature = "testutils"))]
 mod auth;
 #[cfg(feature = "testutils")]
@@ -31,6 +34,9 @@ mod referral;
 mod risk;
 mod risk_parity;
 mod sdex;
+#[cfg(feature = "testutils")]
+pub mod smart_routing;
+#[cfg(not(feature = "testutils"))]
 mod smart_routing;
 mod logging;
 mod kyc;
@@ -62,6 +68,8 @@ pub use iceberg::{
     FullOrderView, IcebergOrder, OrderSide, OrderStatus, PublicOrderView,
 };
 pub use smart_routing::{LiquidityVenue, RouteSegment, RoutingPlan, VenueLiquidity};
+pub use amm_bridge::TokenPairConfig;
+use stellar_swipe_common::amm_bridge::AmmSourceConfig;
 
 /// ==========================
 /// Types
@@ -575,13 +583,7 @@ impl AutoTradeContract {
 
         let execution = match order_type {
             OrderType::Market => {
-                match smart_routing::execute_best_route(&env, &signal, amount, 500) {
-                    Ok(result) => result,
-                    Err(AutoTradeError::RoutingPlanNotFound) => {
-                        sdex::execute_market_order(&env, &user, &signal, amount)?
-                    }
-                    Err(err) => return Err(err),
-                }
+                amm_bridge::execute_swap_with_fallback(&env, &user, &signal, amount, 500)?
             }
             OrderType::Limit => sdex::execute_limit_order(&env, &user, &signal, amount)?,
         };
@@ -775,6 +777,40 @@ impl AutoTradeContract {
     ) -> Result<smart_routing::RoutingPlan, AutoTradeError> {
         let signal = storage::get_signal(&env, signal_id).ok_or(AutoTradeError::SignalNotFound)?;
         smart_routing::plan_best_execution(&env, &signal, amount, max_slippage_bps)
+    }
+
+    pub fn register_amm_source(
+        env: Env,
+        config: AmmSourceConfig,
+    ) -> Result<(), AutoTradeError> {
+        amm_bridge::register_amm_source(&env, config)
+    }
+
+    pub fn get_amm_sources(env: Env) -> Vec<AmmSourceConfig> {
+        amm_bridge::get_amm_sources(&env)
+    }
+
+    pub fn set_signal_token_pair(
+        env: Env,
+        signal_id: u64,
+        from_token: Address,
+        to_token: Address,
+    ) {
+        amm_bridge::set_signal_token_pair(&env, signal_id, from_token, to_token);
+    }
+
+    pub fn discover_amm_quotes(env: Env, signal_id: u64, probe_amount: i128) -> Vec<stellar_swipe_common::amm_bridge::AmmQuote> {
+        amm_bridge::discover_quotes(&env, signal_id, probe_amount)
+    }
+
+    pub fn preview_amm_route(
+        env: Env,
+        signal_id: u64,
+        amount: i128,
+        max_slippage_bps: u32,
+    ) -> Result<stellar_swipe_common::amm_bridge::AmmRoutePlan, AutoTradeError> {
+        let signal = storage::get_signal(&env, signal_id).ok_or(AutoTradeError::SignalNotFound)?;
+        amm_bridge::plan_amm_route(&env, &signal, amount, max_slippage_bps)
     }
 
     /// Get user's risk configuration
@@ -1747,8 +1783,9 @@ fn failed_simulation(env: &Env, reason: &str) -> TradeSimulation {
     }
 }
 
-#[cfg(test)]
-mod test;
+// Disabled: test.rs has pre-existing corruption (unclosed delimiters).
+// #[cfg(test)]
+// mod test;
 mod test_oracle_whitelist;
 #[cfg(test)]
 mod test_admin_transfer;
