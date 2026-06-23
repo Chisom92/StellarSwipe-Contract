@@ -1158,9 +1158,6 @@ fn decay_applied_after_grace_period() {
     );
 }
 
-    ));
-}
-
 #[test]
 fn no_decay_within_grace_period() {
     let (env, contract_id, admin, _recipients) = setup();
@@ -1317,8 +1314,6 @@ fn detect_staleness_logic() {
 
 #[cfg(test)]
 mod event_format_tests {
-#[cfg(test)]
-mod event_format_tests {
     use super::*;
     use soroban_sdk::{testutils::Events, Symbol};
 
@@ -1401,11 +1396,6 @@ mod event_format_tests {
         assert_eq!(contract, Symbol::new(&env, "governance"));
         assert_eq!(event, Symbol::new(&env, "vesting_released"));
     }
- feat/governance-pause-propagation
-feat/governance-pause-propagation
-
- feat/treasury-budget-caps
-main
 }
 
 // ── Committee election: quorum, invalid-vote, and success tests ──────────
@@ -2060,16 +2050,11 @@ fn non_admin_cannot_approve_budget() {
     );
     assert_eq!(result, Err(Ok(GovernanceError::Unauthorized)));
 }
- feat/governance-pause-propagation
 
+// ── Conviction Calibration tests ─────────────────────────────────────
 
-
- main
-
-    // ── Conviction Calibration tests ─────────────────────────────────────
-
-    #[test]
-    fn conviction_calibration_default_is_noop() {
+#[test]
+fn conviction_calibration_default_is_noop() {
         let (env, contract_id, admin, recipients) = setup();
         let client = client(&env, &contract_id);
         initialize(&client, &env, &admin, &recipients);
@@ -2186,6 +2171,8 @@ fn non_admin_cannot_approve_budget() {
         let conviction = client.update_proposal_conviction(&pool_id, &proposal_id);
         assert!(conviction > 0);
         assert_eq!(conviction, 1);
+    }
+
     #[test]
     fn conviction_calibration_reward_long_votes() {
         let (env, contract_id, admin, recipients) = setup();
@@ -2219,9 +2206,6 @@ fn non_admin_cannot_approve_budget() {
         env.ledger().set_timestamp(15 * 86_400);
         let conviction = client.update_proposal_conviction(&pool_id, &proposal_id);
         assert!(conviction >= 3);
-    }
-
-
     }
 
     #[test]
@@ -2337,10 +2321,6 @@ fn non_admin_cannot_approve_budget() {
         assert_eq!(conviction, 1);
     }
 
- main
- feat/governance-pause-propagation
-
-
 #[test]
 fn voting_power_uses_snapshot_not_live_balance() {
     // Arrange: two voters with pre-existing stake
@@ -2384,4 +2364,3 @@ fn voting_power_uses_snapshot_not_live_balance() {
     );
     assert_eq!(result, Err(Ok(GovernanceError::NoVotingPower)));
 }
- main

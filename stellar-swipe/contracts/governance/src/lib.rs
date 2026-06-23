@@ -71,7 +71,6 @@ use timelock::{
     initialize_timelock, queue_action, update_timelock_delay, ActionType, QueuedAction, Timelock,
     TimelockAnalytics,
 };
-pub use reputation::{ReputationConfig, ReputationTier, StalenessLevel};
 pub use token::{HolderAnalytics, HolderBalance, TokenMetadata};
 pub use treasury::{
     Budget, BudgetApproval, BudgetReport, RebalanceAction, RecurringPayment, Treasury,
